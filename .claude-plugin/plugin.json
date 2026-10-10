@@ -1,0 +1,20 @@
+{
+  "name": "sohub-plugins-kickoff",
+  "version": "0.11.0",
+  "description": "Cadrage de projet : de l'idée au PRD, à l'architecture, aux ADR et au backlog de user stories, par itérations questions/réponses et évaluations des points d'ombre ; rétro-documentation d'un projet existant à partir de son code.",
+  "author": {
+    "name": "Sabri",
+    "email": "ouakedsabri@gmail.com"
+  },
+  "keywords": [
+    "cadrage",
+    "prd",
+    "architecture",
+    "adr",
+    "backlog",
+    "user-stories",
+    "kickoff",
+    "reverse-engineering",
+    "documentation"
+  ]
+}

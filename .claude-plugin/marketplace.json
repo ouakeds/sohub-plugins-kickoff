@@ -1,0 +1,13 @@
+{
+  "name": "sohub-plugins-kickoff-dev",
+  "owner": {
+    "name": "Sabri"
+  },
+  "plugins": [
+    {
+      "name": "sohub-plugins-kickoff",
+      "source": "./",
+      "description": "Cadrage de projet : de l'idée au PRD, à l'architecture, aux ADR et au backlog de user stories, par itérations questions/réponses et évaluations des points d'ombre ; rétro-documentation d'un projet existant à partir de son code."
+    }
+  ]
+}
