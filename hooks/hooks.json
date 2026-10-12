@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/metrics.py\" subagent"
+            "command": "python3 -I \"${CLAUDE_PLUGIN_ROOT}/hooks/metrics.py\" subagent"
           }
         ]
       }
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/metrics.py\" stop"
+            "command": "python3 -I \"${CLAUDE_PLUGIN_ROOT}/hooks/metrics.py\" stop"
           }
         ]
       }

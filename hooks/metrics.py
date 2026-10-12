@@ -70,9 +70,43 @@ def fmt_int(value):
     return f"{int(value):,}".replace(",", " ")
 
 
+def read_jsonl(path):
+    """Objets JSON d'un fichier JSON Lines, et nombre de lignes illisibles (ignorées)."""
+    rows, bad = [], 0
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                bad += 1
+                continue
+            if isinstance(row, dict):
+                rows.append(row)
+            else:
+                bad += 1
+    return rows, bad
+
+
 def load_jsonl(path):
-    with open(path, encoding="utf-8") as f:
-        return [json.loads(line) for line in f if line.strip()]
+    return read_jsonl(path)[0]
+
+
+def valid_record(r):
+    try:
+        parse_ts(r["debut"])
+        parse_ts(r["fin"])
+        return isinstance(r.get("duree_s"), (int, float)) and isinstance(r.get("tokens"), dict) and isinstance(r.get("acteur"), str) and isinstance(r.get("type"), str)
+    except Exception:
+        return False
+
+
+def load_records(path):
+    """Enregistrements exploitables de metrics.jsonl, et nombre de lignes ignorées (illisibles ou incomplètes)."""
+    rows, bad = read_jsonl(path)
+    records = [r for r in rows if valid_record(r)]
+    return records, bad + len(rows) - len(records)
 
 
 def plugin_version():
@@ -83,9 +117,18 @@ def plugin_version():
         return "?"
 
 
+def normalize_model(model):
+    """Identifiant Anthropic d'un modèle servi par Bedrock ou Vertex AI
+    (« us.anthropic.claude-sonnet-4-6-v1:0 », « claude-opus-4-6@20260101 » → « claude-… »)."""
+    model = re.sub(r"^(?:[a-z]{2,6}\.)?anthropic\.", "", model.strip())
+    model = re.sub(r"@[\w.-]*$", "", model)
+    return re.sub(r"-v\d+(?::\d+)?$", "", model)
+
+
 def model_key(model):
-    if not model:
+    if not model or model.startswith("<"):
         return None
+    model = normalize_model(model)
     for key in sorted(PRICES, key=len, reverse=True):
         if model == key or model.startswith(key + "-") or model.startswith(key + "["):
             return key
@@ -112,8 +155,10 @@ def usage_of(entries, main_thread=None):
     last, final, chars = {}, set(), {}
     for e in entries:
         message = e.get("message") or {}
-        if e.get("type") != "assistant" or not message.get("usage"):
+        if e.get("type") != "assistant" or not isinstance(message.get("usage"), dict):
             continue
+        if str(message.get("model") or "").startswith("<"):
+            continue  # message <synthetic> (erreur API, interruption) : aucun token facturé
         if main_thread is not None and bool(e.get("isSidechain")) == main_thread:
             continue
         mid = message.get("id")
@@ -122,7 +167,7 @@ def usage_of(entries, main_thread=None):
             final.add(mid)
         chars[mid] = chars.get(mid, 0) + content_chars(message)
     totals = {"entree": 0, "cache_ecrit": 0, "cache_lu": 0, "sortie": 0}
-    cost_in, cost_out, unknown, models = 0.0, 0.0, False, set()
+    cost_in, cost_out, unknown, models, counted, estimated = 0.0, 0.0, False, set(), 0, False
     for message in last.values():
         u = message["usage"]
         inp = u.get("input_tokens") or 0
@@ -133,7 +178,12 @@ def usage_of(entries, main_thread=None):
         if mid not in final:
             # Dernière ligne de streaming absente : l'usage est partiel, on estime la sortie
             # d'après le texte et les entrées d'outils produits (la réflexion n'est pas comptée).
-            out = max(out, round(chars.get(mid, 0) / CHARS_PER_OUTPUT_TOKEN))
+            guess = round(chars.get(mid, 0) / CHARS_PER_OUTPUT_TOKEN)
+            if guess > out:
+                out, estimated = guess, True
+        if not (inp or cw or cr or out):
+            continue  # usage nul : rien à compter ni à tarifer
+        counted += 1
         totals["entree"] += inp
         totals["cache_ecrit"] += cw
         totals["cache_lu"] += cr
@@ -157,7 +207,7 @@ def usage_of(entries, main_thread=None):
         "entree": round(cost_in, 6), "sortie": round(cost_out, 6), "total": round(cost_in + cost_out, 6),
         "partiel": unknown,
     }
-    return tokens, cost, sorted(models), len(last)
+    return tokens, cost, sorted(models), counted, estimated
 
 
 def model_tag(entries, main_thread=None):
@@ -182,14 +232,75 @@ def prompt_text(entry):
     return content or ""
 
 
-def find_sohub_dir(prompt):
-    match = re.search(r"(/[^\s`'\"]*?/\.sohub-plugin)(?=/|\s|`|'|\"|$)", prompt)
-    if match:
-        return match.group(1)
-    match = re.search(r"(/[^\s`'\"]*?)/docs(?=/|\s|`|'|\"|$)", prompt)
-    if match:
-        return match.group(1) + "/.sohub-plugin"
+# Fin du chemin d'un projet : « /docs » ou « /.sohub-plugin » (séparateur / ou \), suivi d'une limite.
+PROJECT_MARKER = re.compile(r"""[\\/](?:\.sohub-plugin|docs)(?=[\\/\s`'"),;:!?>\]]|\.(?:\s|$)|$)""")
+PATH_OPENERS = " \t`'\"([<="
+MAX_PATH_LENGTH = 1024
+
+
+def path_starts(text, end):
+    """Débuts possibles du chemin qui se termine en `end` (sur la même ligne), du plus proche au plus lointain :
+    un chemin peut contenir des espaces (« /mnt/c/Users/x/My Projects/app »)."""
+    line_start = max(text.rfind("\n", 0, end) + 1, end - MAX_PATH_LENGTH)
+    for s in range(end - 1, line_start - 1, -1):
+        if s > line_start and text[s - 1] not in PATH_OPENERS:
+            continue
+        head = text[s:s + 3]
+        if head[:1] == "/" or head[:2] in ("~/", "./") or head == "../" or re.match(r"[A-Za-z]:[\\/]", head) \
+                or re.match(r"[\w-]", head[:1]):
+            yield s
+
+
+def resolve_project(candidate, cwd):
+    """Dossier du projet si `candidate` (chemin cité, relatif au cwd du hook) désigne un dossier dont `docs/`
+    existe réellement et où `.sohub-plugin/` existe ou peut être créé ; sinon None."""
+    if not candidate or "://" in candidate or candidate.startswith("//") or any(c in candidate for c in "`\"<>|\n"):
+        return None
+    path = os.path.expanduser(candidate)
+    if not os.path.isabs(path):
+        if not cwd or not os.path.isabs(cwd):
+            return None
+        path = os.path.join(cwd, path)
+    path = os.path.normpath(path)
+    if os.path.dirname(path) == path or not os.path.isdir(os.path.join(path, "docs")):
+        return None
+    sohub = os.path.join(path, ".sohub-plugin")
+    if os.path.isdir(sohub) or (not os.path.lexists(sohub) and os.access(path, os.W_OK | os.X_OK)):
+        return path
     return None
+
+
+def cited_projects(text, cwd):
+    """Projets cités dans un texte (chemins vers `<projet>/docs` ou `<projet>/.sohub-plugin`), dans l'ordre."""
+    found = []
+
+    def add(project):
+        if project and project not in found:
+            found.append(project)
+
+    text = text or ""
+    # Chemins entre backticks ou guillemets doubles (espaces compris) en priorité.
+    for match in re.finditer(r"`([^`\n]+)`|\"([^\"\n]+)\"", text):
+        span = (match.group(1) or match.group(2)).strip()
+        for marker in PROJECT_MARKER.finditer(span):
+            add(resolve_project(span[:marker.start()], cwd))
+    for marker in PROJECT_MARKER.finditer(text):
+        for s in path_starts(text, marker.start()):
+            project = resolve_project(text[s:marker.start()], cwd)
+            if project:
+                add(project)
+                break
+    return found
+
+
+def find_sohub_dir(prompt, cwd=None):
+    projects = cited_projects(prompt, cwd)
+    return os.path.join(projects[0], ".sohub-plugin") if projects else None
+
+
+def is_plugin_project(path):
+    """Projet du plugin : `docs/` et `.sohub-plugin/` existent."""
+    return bool(path) and os.path.isdir(os.path.join(path, "docs")) and os.path.isdir(os.path.join(path, ".sohub-plugin"))
 
 
 # Une itération commence à chaque analyse du cadrage, ou à chaque série d'explorations d'un projet existant
@@ -248,11 +359,34 @@ def latest_eval_quality(projet):
     return quality
 
 
-def append_and_render(sohub_dir, records):
+def replace_records(sohub_dir, records, replaces):
+    """Ajoute des enregistrements à metrics.jsonl en retirant ceux qu'ils remplacent (`replaces(ancien)` vrai),
+    puis régénère metrics.md. Les autres lignes, même illisibles, sont gardées telles quelles."""
     os.makedirs(sohub_dir, exist_ok=True)
-    with open(os.path.join(sohub_dir, "metrics.jsonl"), "a", encoding="utf-8") as f:
-        for record in records:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    path = os.path.join(sohub_dir, "metrics.jsonl")
+    kept = []
+    if os.path.exists(path):
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.rstrip("\n")
+                if not line.strip():
+                    continue
+                try:
+                    old = json.loads(line)
+                    if isinstance(old, dict) and replaces(old):
+                        continue
+                except Exception:
+                    pass
+                kept.append(line)
+    kept += [json.dumps(record, ensure_ascii=False) for record in records]
+    tmp = f"{path}.{os.getpid()}.tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write("\n".join(kept) + "\n")
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
     render(os.path.dirname(sohub_dir))
 
 
@@ -281,12 +415,12 @@ def hook_subagent(hook):
     if not stamps or not first_user:
         return
     prompt = prompt_text(first_user)
-    sohub_dir = find_sohub_dir(prompt)
+    sohub_dir = find_sohub_dir(prompt, hook.get("cwd"))
     if not sohub_dir:
         return
     projet = os.path.dirname(sohub_dir)
 
-    tokens, cost, models, turns = usage_of(entries)
+    tokens, cost, models, turns, estimated = usage_of(entries)
     tools = {}
     for e in entries:
         for block in ((e.get("message") or {}).get("content") or []) if e.get("type") == "assistant" else []:
@@ -307,9 +441,13 @@ def hook_subagent(hook):
         "tokens": tokens, "cout": cost,
         "version_plugin": plugin_version(),
     }
+    if estimated:
+        record["estime"] = True
     if mode == "EVAL":
         record["qualite"] = latest_eval_quality(projet)
-    append_and_render(sohub_dir, [record])
+    # Un même agent n'est compté qu'une fois, même si le hook se déclenche deux fois.
+    replace_records(sohub_dir, [record], lambda old: bool(record["agent_id"]) and old.get("type") == "agent"
+                    and old.get("agent_id") == record["agent_id"] and old.get("session") == record["session"])
 
 
 def is_prompt(entry):
@@ -322,68 +460,129 @@ def is_prompt(entry):
         isinstance(c, dict) and c.get("type") == "tool_result" for c in content)
 
 
+def turn_text(entries):
+    """Texte où chercher les projets cités pendant un tour : invites de l'utilisateur et entrées d'outils
+    de la session principale (chemins lus, prompts des agents)."""
+    parts = []
+
+    def strings(value):
+        if isinstance(value, str):
+            parts.append(value)
+        elif isinstance(value, dict):
+            for v in value.values():
+                strings(v)
+        elif isinstance(value, list):
+            for v in value:
+                strings(v)
+
+    for e in entries:
+        if e.get("isSidechain"):
+            continue
+        if is_prompt(e):
+            parts.append(prompt_text(e))
+        elif e.get("type") == "assistant":
+            for block in (e.get("message") or {}).get("content") or []:
+                if isinstance(block, dict) and block.get("type") == "tool_use":
+                    strings(block.get("input"))
+    return "\n".join(parts)
+
+
 def hook_stop(hook):
     """Attribue le travail de la session principale pendant le tour (orchestrateur, attente de
-    l'utilisateur comprise dans la durée) au projet dont des agents ont tourné pendant ce tour."""
+    l'utilisateur comprise dans la durée) au projet dont des agents ont tourné pendant ce tour, sinon au
+    projet du plugin concerné par le tour (répertoire courant, ou projet cité). Rien n'est écrit pour un
+    tour qui ne concerne aucun projet du plugin."""
     session, path = hook.get("session_id"), hook.get("transcript_path")
     if not session or not path or not os.path.exists(path):
         return
-    cwd = hook.get("cwd") or os.getcwd()
-    candidates = glob.glob(os.path.join(cwd, ".sohub-plugin", "metrics.jsonl")) + \
-        glob.glob(os.path.join(cwd, "*", ".sohub-plugin", "metrics.jsonl"))
-    if not candidates:
-        return
+    cwd = os.path.abspath(hook.get("cwd") or os.getcwd())
     entries = load_jsonl(path)
     start_idx = max((i for i, e in enumerate(entries) if is_prompt(e)), default=None)
     if start_idx is None:
         return
-    turn = entries[start_idx:]
+    turn = [e for e in entries[start_idx:] if e.get("timestamp")]
+    if not turn:
+        return
     turn_start = parse_ts(turn[0]["timestamp"])
-    turn_end = max(parse_ts(e["timestamp"]) for e in turn if e.get("timestamp"))
+    turn_end = max(parse_ts(e["timestamp"]) for e in turn)
 
-    for metrics_path in candidates:
-        records = load_jsonl(metrics_path)
-        agents = sorted((r for r in records if r.get("type") == "agent" and r.get("session") == session
-                         and parse_ts(r["debut"]) >= turn_start), key=lambda r: r["debut"])
-        if not agents:
+    direct = ([cwd] if is_plugin_project(cwd) else []) + \
+        [p for p in cited_projects(turn_text(turn), cwd) if is_plugin_project(p)]
+    candidates = list(direct)
+    for metrics_path in sorted(glob.glob(os.path.join(glob.escape(cwd), "*", ".sohub-plugin", "metrics.jsonl"))):
+        project = os.path.dirname(os.path.dirname(metrics_path))
+        if is_plugin_project(project):
+            candidates.append(project)
+    chosen, agents, records = None, [], []
+    for project in dict.fromkeys(candidates):
+        metrics_path = os.path.join(project, ".sohub-plugin", "metrics.jsonl")
+        recs = load_records(metrics_path)[0] if os.path.exists(metrics_path) else []
+        found = sorted((r for r in recs if r["type"] == "agent" and r.get("session") == session
+                        and parse_ts(r["debut"]) >= turn_start), key=lambda r: r["debut"])
+        if found:
+            chosen, agents, records = project, found, recs
+            break
+    if not chosen:
+        if not direct:
+            return
+        chosen = direct[0]
+        metrics_path = os.path.join(chosen, ".sohub-plugin", "metrics.jsonl")
+        records = load_records(metrics_path)[0] if os.path.exists(metrics_path) else []
+
+    # Itération = nombre d'analyses (ou de séries d'explorations) lancées jusqu'à l'agent concerné (toutes sessions du projet).
+    analyses = iteration_starts(records)
+
+    def iteration_at(ts):
+        return max(1, sum(1 for a in analyses if a <= ts))
+
+    # Chaque message de l'orchestrateur va à l'itération de l'agent suivant (préparation), sinon du dernier ;
+    # sans agent dans le tour, à l'itération en cours.
+    buckets = {}
+    for e in turn:
+        if e.get("isSidechain"):
             continue
-        # Itération = nombre d'analyses (ou de séries d'explorations) lancées jusqu'à l'agent concerné (toutes sessions du projet).
-        analyses = iteration_starts(records)
-
-        def iteration_at(ts):
-            return max(1, sum(1 for a in analyses if a <= ts))
-
-        # Chaque message de l'orchestrateur va à l'itération de l'agent suivant (préparation), sinon du dernier.
-        buckets = {}
-        for e in turn:
-            if not e.get("timestamp") or e.get("isSidechain"):
-                continue
-            ts = parse_ts(e["timestamp"])
+        ts = parse_ts(e["timestamp"])
+        if agents:
             nxt = next((a for a in agents if parse_ts(a["debut"]) >= ts), None)
             it = iteration_at(parse_ts(nxt["debut"]) if nxt else parse_ts(agents[-1]["debut"]))
-            buckets.setdefault(it, []).append(e)
-        out = []
-        for it, items in sorted(buckets.items()):
-            tokens, cost, models, turns = usage_of(items, main_thread=True)
-            if not turns:
-                continue
-            debut = min(parse_ts(e["timestamp"]) for e in items)
-            fin = max(parse_ts(e["timestamp"]) for e in items)
-            if it == min(buckets):
-                debut = turn_start
-            if it == max(buckets):
-                fin = turn_end
-            out.append({
-                "type": "orchestrateur", "session": session, "acteur": "orchestrateur", "mode": "ORCHESTRATION",
-                "etape": None, "tache": f"Orchestration — itération {it}", "iteration": it,
-                "debut": iso(debut), "fin": iso(fin), "duree_s": round((fin - debut).total_seconds(), 1),
-                "tours": turns, "modeles": models, "modele": model_tag(items, main_thread=True),
-                "tokens": tokens, "cout": cost,
-                "version_plugin": plugin_version(),
-            })
-        if out:
-            append_and_render(os.path.dirname(metrics_path), out)
+        else:
+            it = iteration_at(turn_start)
+        buckets.setdefault(it, []).append(e)
+    out = []
+    for it, items in sorted(buckets.items()):
+        tokens, cost, models, turns, estimated = usage_of(items, main_thread=True)
+        if not turns:
+            continue
+        debut = min(parse_ts(e["timestamp"]) for e in items)
+        fin = max(parse_ts(e["timestamp"]) for e in items)
+        if it == min(buckets):
+            debut = turn_start
+        if it == max(buckets):
+            fin = turn_end
+        record = {
+            "type": "orchestrateur", "session": session, "acteur": "orchestrateur", "mode": "ORCHESTRATION",
+            "etape": None, "tache": f"Orchestration — itération {it}", "iteration": it,
+            "debut_tour": iso(turn_start),
+            "debut": iso(debut), "fin": iso(fin), "duree_s": round((fin - debut).total_seconds(), 1),
+            "tours": turns, "modeles": models, "modele": model_tag(items, main_thread=True),
+            "tokens": tokens, "cout": cost,
+            "version_plugin": plugin_version(),
+        }
+        if estimated:
+            record["estime"] = True
+        out.append(record)
+    if not out:
         return
+
+    def same_turn(old):
+        # Hook Stop déclenché plusieurs fois pour un même tour : les nouveaux enregistrements remplacent les anciens.
+        if old.get("type") != "orchestrateur" or old.get("session") != session:
+            return False
+        if old.get("debut_tour"):
+            return parse_ts(old["debut_tour"]) == turn_start
+        return turn_start <= parse_ts(old["debut"]) <= turn_end
+
+    replace_records(os.path.join(chosen, ".sohub-plugin"), out, same_turn)
 
 
 # ---------- agrégats ----------
@@ -427,6 +626,7 @@ def summarize(records):
             "agents_s": sum(r["duree_s"] for r in recs if r["type"] == "agent"),
             "tokens": it["tokens"], "cout": it["cout"],
             "qualite": evals[-1]["qualite"] if evals else None,
+            "estime": any(r.get("estime") for r in recs),
             "orchestrateur": any(r["type"] == "orchestrateur" for r in recs),
         })
     total_cost = {}
@@ -435,9 +635,10 @@ def summarize(records):
     last_quality = next((row["qualite"] for row in reversed(rows) if row["qualite"]), None)
     return {
         "records": records, "iterations": rows, "cout": total_cost,
-        "tokens_entree": sum(r["tokens"]["entree_total"] for r in records),
-        "tokens_sortie": sum(r["tokens"]["sortie"] for r in records),
-        "cache_lu": sum(r["tokens"]["cache_lu"] for r in records),
+        "tokens_entree": sum(r["tokens"].get("entree_total", 0) for r in records),
+        "tokens_sortie": sum(r["tokens"].get("sortie", 0) for r in records),
+        "sortie_estimee": any(r.get("estime") for r in records),
+        "cache_lu": sum(r["tokens"].get("cache_lu", 0) for r in records),
         "duree_s": sum(row["duree_s"] for row in rows),
         "agents_s": sum(row["agents_s"] for row in rows),
         "qualite": last_quality,
@@ -462,12 +663,17 @@ def cost_cell(c, key):
     return fmt_usd(c[key]) + ("*" if c.get("inconnu") else "")
 
 
+def estimated_mark(flag):
+    return "†" if flag else ""
+
+
 def render(projet):
     sohub_dir = os.path.join(projet, ".sohub-plugin")
     path = os.path.join(sohub_dir, "metrics.jsonl")
     if not os.path.exists(path):
         return
-    s = summarize(load_jsonl(path))
+    records, skipped = load_records(path)
+    s = summarize(records)
     L = [
         "# Métriques du cadrage", "",
         "<!-- Vue générée automatiquement depuis metrics.jsonl (hooks du plugin) : ne pas modifier à la main. -->",
@@ -480,7 +686,7 @@ def render(projet):
         f"- **Temps** : {fmt_duration(s['duree_s'])} au total, dont {fmt_duration(s['agents_s'])} d'agents"
         + ("" if s["orchestrateur_mesure"] else " (orchestrateur non mesuré)"),
         f"- **Tokens** : {fmt_int(s['tokens_entree'])} en entrée (dont {fmt_int(s['cache_lu'])} de cache lu), "
-        f"{fmt_int(s['tokens_sortie'])} en sortie",
+        f"{fmt_int(s['tokens_sortie'])}{estimated_mark(s['sortie_estimee'])} en sortie",
         f"- **Coût** : {cost_cell(s['cout'], 'entree')} en entrée + {cost_cell(s['cout'], 'sortie')} en sortie "
         f"= **{cost_cell(s['cout'], 'total')}**",
         f"- **Qualité (dernier eval)** : {quality_cell(s['qualite'])} points d'ombre ouverts",
@@ -491,7 +697,7 @@ def render(projet):
     ]
     for row in s["iterations"]:
         L.append(f"| {row['iteration']} | {row['etape']} | {fmt_duration(row['duree_s'])} | {fmt_duration(row['agents_s'])} "
-                 f"| {fmt_int(row['tokens']['entree_total'])} | {fmt_int(row['tokens']['sortie'])} "
+                 f"| {fmt_int(row['tokens']['entree_total'])} | {fmt_int(row['tokens']['sortie'])}{estimated_mark(row['estime'])} "
                  f"| {cost_cell(row['cout'], 'entree')} | {cost_cell(row['cout'], 'sortie')} | {cost_cell(row['cout'], 'total')} "
                  f"| {quality_cell(row['qualite'])} |")
 
@@ -500,8 +706,8 @@ def render(projet):
         g = groups.setdefault((r["acteur"], r.get("mode") or "?", r.get("modele", "?")), {"n": 0, "duree": 0, "tin": 0, "tout": 0, "cout": {}})
         g["n"] += 1
         g["duree"] += r["duree_s"]
-        g["tin"] += r["tokens"]["entree_total"]
-        g["tout"] += r["tokens"]["sortie"]
+        g["tin"] += r["tokens"].get("entree_total", 0)
+        g["tout"] += r["tokens"].get("sortie", 0)
         add_cost(g["cout"], r.get("cout"))
     L += ["", "## Moyennes par acteur et mode", "",
           "| Acteur | Mode | Modèle | N | Durée moy. | Tokens entrée moy. | Tokens sortie moy. | Coût entrée moy. | Coût sortie moy. | Coût total cumulé |",
@@ -517,14 +723,22 @@ def render(projet):
           "| It. | Acteur | Modèle | Tâche | Début | Fin | Durée | Tours | Outils | Tokens entrée (cache lu) | Tokens sortie | Total | Coût entrée | Coût sortie | Coût total |",
           "|-----|--------|--------|-------|-------|-----|-------|-------|--------|--------------------------|---------------|-------|-------------|-------------|------------|"]
     for r in s["records"]:
-        t, c = r["tokens"], r.get("cout")
+        t, c = {"entree_total": 0, "cache_lu": 0, "sortie": 0, "total": 0, **r["tokens"]}, r.get("cout")
         tools = ", ".join(f"{k} {v}" for k, v in sorted((r.get("outils") or {}).items())) or "—"
-        L.append(f"| {r['iteration']} | {r['acteur']} | {r.get('modele', '?')} | {r['tache'].replace('|', '/')} | {short(r['debut'])} | {short(r['fin'])} "
+        L.append(f"| {r['iteration']} | {r['acteur']} | {r.get('modele', '?')} | {str(r.get('tache') or '—').replace('|', '/')} | {short(r['debut'])} | {short(r['fin'])} "
                  f"| {fmt_duration(r['duree_s'])} | {r.get('tours', '—')} | {tools} "
-                 f"| {fmt_int(t['entree_total'])} ({fmt_int(t['cache_lu'])}) | {fmt_int(t['sortie'])} | {fmt_int(t['total'])} "
+                 f"| {fmt_int(t['entree_total'])} ({fmt_int(t['cache_lu'])}) | {fmt_int(t['sortie'])}{estimated_mark(r.get('estime'))} | {fmt_int(t['total'])} "
                  f"| {fmt_usd(c and c['entree'])} | {fmt_usd(c and c['sortie'])} | {fmt_usd(c and c['total'])} |")
+    notes = []
     if s["cout"].get("inconnu"):
-        L += ["", "\\* coût partiel : un modèle sans tarif connu a été utilisé."]
+        notes.append("\\* coût partiel : un modèle sans tarif connu a été utilisé.")
+    if s["sortie_estimee"]:
+        notes.append("† tokens de sortie estimés d'après le texte produit (dernière ligne de streaming absente du "
+                     "transcript, réflexion non comptée) : probablement sous-estimés.")
+    if skipped:
+        notes.append(f"{skipped} ligne(s) illisible(s) ou incomplète(s) de metrics.jsonl ignorée(s).")
+    for note in notes:
+        L += ["", note]
     with open(os.path.join(sohub_dir, "metrics.md"), "w", encoding="utf-8") as f:
         f.write("\n".join(L) + "\n")
 
@@ -534,7 +748,10 @@ def compare(projets):
     for p in projets:
         path = os.path.join(p, ".sohub-plugin", "metrics.jsonl")
         if os.path.exists(path):
-            runs.append((p, summarize(load_jsonl(path))))
+            records, skipped = load_records(path)
+            if skipped:
+                print(f"> {p} : {skipped} ligne(s) illisible(s) ou incomplète(s) de metrics.jsonl ignorée(s).\n")
+            runs.append((p, summarize(records)))
         else:
             print(f"> {p} : pas de .sohub-plugin/metrics.jsonl, ignoré.\n")
     if not runs:
@@ -546,7 +763,8 @@ def compare(projets):
         n = len(s["iterations"]) or 1
         per_it = {"total": s["cout"]["total"] / n, "inconnu": s["cout"].get("inconnu")} if "total" in s["cout"] else None
         L.append(f"| {os.path.basename(os.path.abspath(p))} | {', '.join(s['versions'])} | {len(s['iterations'])} | {s['etape_atteinte']} "
-                 f"| {fmt_duration(s['duree_s'])} | {fmt_duration(s['agents_s'])} | {fmt_int(s['tokens_entree'])} | {fmt_int(s['tokens_sortie'])} "
+                 f"| {fmt_duration(s['duree_s'])} | {fmt_duration(s['agents_s'])} | {fmt_int(s['tokens_entree'])} "
+                 f"| {fmt_int(s['tokens_sortie'])}{estimated_mark(s['sortie_estimee'])} "
                  f"| {cost_cell(s['cout'], 'entree')} | {cost_cell(s['cout'], 'sortie')} | {cost_cell(s['cout'], 'total')} "
                  f"| {quality_cell(s['qualite'])} | {cost_cell(per_it, 'total')} |")
     L += ["", "## Modèles par acteur (· effort)", ""]
@@ -559,15 +777,22 @@ def compare(projets):
         L.append(f"- **{os.path.basename(os.path.abspath(p))}** : {steps}")
     if any(not s["orchestrateur_mesure"] for _, s in runs):
         L += ["", "Attention : pour certains runs, l'orchestrateur n'est pas mesuré (durée et coût limités aux agents)."]
+    if any(s["sortie_estimee"] for _, s in runs):
+        L += ["", "† tokens de sortie en partie estimés (transcript incomplet) : probablement sous-estimés."]
     print("\n".join(L))
 
 
 def main():
     command = sys.argv[1] if len(sys.argv) > 1 else "subagent"
-    if command == "render":
-        render(sys.argv[2])
-    elif command == "compare":
-        compare(sys.argv[2:])
+    if command in ("render", "compare"):
+        try:
+            if command == "render":
+                render(sys.argv[2])
+            else:
+                compare(sys.argv[2:])
+        except Exception as exc:
+            print(f"metrics.py {command} : échec ({type(exc).__name__} : {exc})", file=sys.stderr)
+            sys.exit(1)
     else:
         try:
             hook = json.load(sys.stdin)

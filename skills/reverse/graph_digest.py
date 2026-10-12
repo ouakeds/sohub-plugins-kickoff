@@ -7,7 +7,9 @@ Lit <dépôt>/.code-review-graph/graph.db (SQLite, schéma code-review-graph ≥
 en lecture seule, avec la seule bibliothèque standard. Les chemins sont rendus
 relatifs au dépôt. Le digest sert d'entrée à l'agent `researcher` (modes
 EXPLORATION et CARTOGRAPHIE) : il dit où regarder, pas ce que fait le produit,
-et répartit les fichiers à lire entre les trois axes d'exploration.
+et répartit les fichiers à lire entre les trois axes d'exploration. Les points
+d'entrée que le graphe ne voit pas (routes Express, Django `urls.py`, Flask) sont
+lus dans le texte des fichiers.
 """
 import json
 import os
@@ -17,12 +19,24 @@ import sys
 from collections import Counter, defaultdict
 
 SKIP_DIRS = {".git", ".code-review-graph", ".sohub-plugin", "node_modules", "venv", ".venv", "env", "vendor",
-             "__pycache__", "dist", "build", "target", ".idea", ".vscode", ".mypy_cache", ".pytest_cache", ".tox"}
+             "__pycache__", "dist", "build", "target", ".idea", ".vscode", ".mypy_cache", ".pytest_cache", ".tox",
+             "staticfiles", ".next", "coverage", ".terraform"}
 SKIP_EXT = {".pyc", ".png", ".jpg", ".jpeg", ".gif", ".ico", ".svg", ".woff", ".woff2", ".ttf", ".eot", ".mo",
             ".lock", ".map", ".min.js", ".zip", ".gz", ".jar", ".class", ".so", ".dll", ".exe", ".pdf"}
 # Lecture de variables d'environnement : seul le NOM est capturé, jamais une valeur.
 ENV_RE = re.compile(r"""(?:os\.environ(?:\.get)?\s*[\[(]\s*|os\.getenv\(\s*|getenv\(\s*|process\.env\.|"""
                     r"""process\.env\[\s*|System\.getenv\(\s*|ENV\[\s*|env\(\s*)['"]?([A-Z][A-Z0-9_]{2,})""")
+# Shell, docker-compose, CI : $VAR et ${VAR} (seulement dans ces fichiers : ailleurs, ${X} est un gabarit de code)
+SHELL_ENV_RE = re.compile(r"\$\{?([A-Z][A-Z0-9_]{2,})")
+# Dockerfile : ENV X=… / ENV X … / ARG X
+DOCKER_ENV_RE = re.compile(r"^\s*(ENV|ARG)\s+(.*)", re.I)
+SHELL_FILE_RE = re.compile(r"\.(sh|bash|zsh|ya?ml|env|ini|conf|cfg)$|(^|/)(\.env[^/]*|dockerfile[^/]*|containerfile|"
+                           r"makefile|procfile|jenkinsfile|docker-compose[^/]*|[^/.]+)$", re.I)
+DOCKER_FILE_RE = re.compile(r"(^|/)(dockerfile|containerfile)[^/]*$", re.I)
+# .env, .env.example… : X=… (nom seulement)
+DOTENV_RE = re.compile(r"^\s*(?:export\s+)?([A-Z][A-Z0-9_]{2,})\s*=")
+DOTENV_FILE_RE = re.compile(r"(^|/)\.env[^/]*$")
+SHELL_BUILTINS = {"HOME", "PATH", "PWD", "OLDPWD", "USER", "SHELL", "IFS", "UID", "RANDOM", "LINENO", "HOSTNAME"}
 STDLIB = set(getattr(sys, "stdlib_module_names", ())) | {"__future__"}
 
 ROUTE_RE = re.compile(r"(route|get|post|put|patch|delete|api_view|endpoint|"
@@ -30,19 +44,61 @@ ROUTE_RE = re.compile(r"(route|get|post|put|patch|delete|api_view|endpoint|"
                       r"handler|errorhandler|on_event|websocket|cli)", re.I)
 
 
-DATA_RE = re.compile(r"(^|/)(models?|schemas?|entit(y|ies)|migrations?|alembic|repositor(y|ies)|dao|db|database|"
+DATA_RE = re.compile(r"(^|/)(models?|schemas?|serializers?|entit(y|ies)|migrations?|alembic|repositor(y|ies)|dao|db|database|"
                      r"config|settings|email|mail|search|clients?|tasks?|workers?|celery|queues?|jobs?|translat\w*|"
                      r"requirements[^/]*\.txt|pyproject\.toml|setup\.(py|cfg)|package\.json|pom\.xml|build\.gradle|"
                      r"go\.mod|cargo\.toml|gemfile|composer\.json|dockerfile|docker-compose[^/]*|procfile|"
                      r"\.env\.example|\.flaskenv|[^/]*\.ya?ml|[^/]*\.sql)(\.\w+)?(/|$)", re.I)
-USAGE_RE = re.compile(r"(^|/)(routes?|views?|controllers?|handlers?|endpoints?|api|forms?|cli|commands?|templates?|"
+USAGE_RE = re.compile(r"(^|/)(routes?|routers?|urls|views?|admin|controllers?|handlers?|endpoints?|api|forms?|cli|commands?|templates?|"
                       r"pages?|screens?|tests?|spec|readme[^/]*)(\.\w+)?(/|$)|\.(html|jinja2?|vue|svelte|tsx|jsx)$", re.I)
 
 
 SCREEN_RE = re.compile(r"\.(html|jinja2?|vue|svelte|tsx|jsx)$", re.I)
 # Documentation du cadrage déjà écrite par le plugin : jamais à explorer.
 OWN_DOCS_RE = re.compile(r"^docs/(prd|architecture|glossaire)\.md$|^docs/(adr|contrats|eval|stories)/")
-NOT_READ_RE = re.compile(r"(^|/)(license|licence|copying)[^/]*$|\.(po|pot)$", re.I)
+# .env réel (secrets) jamais à lire ; .env.example / .sample / .template restent visibles
+NOT_READ_RE = re.compile(r"(^|/)(license|licence|copying)[^/]*$|\.(po|pot)$|(^|/)\.(ds_store|gitkeep|keep)$|"
+                         r"(^|/)\.env(\.(?!(example|sample|template|dist)$)[^/]*)?$", re.I)
+# Points d'entrée lus dans le texte quand le graphe n'en donne pas (Express, Django, Flask)
+EXPRESS_RE = re.compile(r"\b(app|router|server|api|\w+Router)\.(get|post|put|patch|delete|all|use)\(\s*(['\"`])([^'\"`]*)\3")
+DJANGO_RE = re.compile(r"\b(re_path|path)\(\s*r?(['\"])([^'\"]*)\2")
+FLASK_RE = re.compile(r"^\s*@(\w+)\.(route|get|post|put|patch|delete)\(\s*(['\"])([^'\"]*)\3")
+JS_EXT = (".js", ".mjs", ".cjs", ".ts", ".mts", ".cts")
+
+
+def env_names(path, line):
+    """Noms des variables d'environnement lues sur une ligne du fichier `path` (relatif au dépôt)."""
+    names = [m.group(1) for m in ENV_RE.finditer(line)]
+    if SHELL_FILE_RE.search(path):
+        names += [n for n in SHELL_ENV_RE.findall(line) if n not in SHELL_BUILTINS]
+    if DOTENV_FILE_RE.search(path):
+        names += DOTENV_RE.findall(line)
+    if DOCKER_FILE_RE.search(path):
+        m = DOCKER_ENV_RE.match(line)
+        if m:
+            rest = m.group(2).strip()
+            if "=" in rest.split(" ", 1)[0]:  # ENV X=1 Y=2, ARG X=défaut
+                names += re.findall(r"(?:^|\s)([A-Z][A-Z0-9_]{2,})=", rest)
+            else:  # ARG X, ENV X valeur
+                names += re.findall(r"^([A-Z][A-Z0-9_]{2,})\b", rest)
+    return list(dict.fromkeys(names))
+
+
+def text_entries(path, line):
+    """Points d'entrée d'une ligne de code : (route, déclencheur), selon le type de fichier."""
+    found = []
+    if path.endswith(JS_EXT):
+        found += [(m.group(4) or "/", f"{m.group(1)}.{m.group(2)}") for m in EXPRESS_RE.finditer(line)]
+    if path.endswith(".py"):
+        if os.path.basename(path) == "urls.py":
+            found += [(m.group(3) or "/", m.group(1)) for m in DJANGO_RE.finditer(line)]
+        found += [(m.group(4) or "/", f"@{m.group(1)}.{m.group(2)}") for m in FLASK_RE.finditer(line)]
+    return found
+
+
+def skipped(path):
+    """Chemin sous un répertoire ignoré (dépendances, générés, dossiers cachés d'outils)."""
+    return any(p in SKIP_DIRS or p.endswith(".egg-info") for p in path.split("/")[:-1])
 
 
 def axis_of(path, entry_files, env_files):
@@ -63,10 +119,14 @@ def main():
     maxn = 15
     if "--max" in args:
         i = args.index("--max")
+        if i + 1 >= len(args) or not args[i + 1].isdigit() or int(args[i + 1]) < 1:
+            print("--max attend un entier positif.\n" + __doc__, file=sys.stderr)
+            sys.exit(2)
         maxn = int(args[i + 1])
         del args[i:i + 2]
     if len(args) != 2:
-        sys.exit(__doc__)
+        print(__doc__, file=sys.stderr)
+        sys.exit(2)
     repo = os.path.abspath(args[0])
     out = args[1]
     db = os.path.join(os.environ.get("CRG_DATA_DIR") or os.path.join(repo, ".code-review-graph"), "graph.db")
@@ -152,6 +212,35 @@ def main():
             entries.append((loc(n), n["name"], "; ".join(decos), (extra.get("docstring") or n["docstring"] or "")[:80]))
         elif n["name"] in ("main", "__main__") and n["kind"] == "Function":
             entries.append((loc(n), n["name"], "main", ""))
+
+    # --- Parcours du dépôt : fichiers hors graphe, variables d'environnement, et points d'entrée lus dans le
+    # texte (Express, Django, Flask) des fichiers où le graphe n'a trouvé aucun décorateur
+    graphed = {rel(n["file_path"]) for n in nodes.values() if n["kind"] == "File"}
+    deco_files = {e[0].rsplit(":", 1)[0] for e in entries if e[2] != "main"}
+    others = defaultdict(list)
+    env = defaultdict(set)
+    for dirpath, dirnames, filenames in os.walk(repo):
+        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS and not d.endswith(".egg-info"))
+        for fn in sorted(filenames):
+            full = os.path.join(dirpath, fn)
+            r = os.path.relpath(full, repo).replace(os.sep, "/")
+            low = fn.lower()
+            if any(low.endswith(e) for e in SKIP_EXT):
+                continue
+            if r not in graphed:
+                others[os.path.dirname(r) or "."].append(fn)
+            try:
+                if os.path.getsize(full) > 512_000:
+                    continue
+                with open(full, encoding="utf-8", errors="ignore") as fh:
+                    for i, line in enumerate(fh, 1):
+                        for name in env_names(r, line):
+                            if len(env[name]) < 3:
+                                env[name].add(f"{r}:{i}")
+                        if r not in deco_files:
+                            entries += [(f"{r}:{i}", route, trig, "") for route, trig in text_entries(r, line)]
+            except OSError:
+                pass
     w(f"## Points d'entrée ({len(entries)})")
     w("")
     if entries:
@@ -161,9 +250,10 @@ def main():
             w(f"| `{name}` | {l} | `{deco.replace('|', '/')}` | {doc.replace('|', '/')} |")
         if len(entries) > maxn * 6:
             w("")
-            w(f"… {len(entries) - maxn * 6} autres points d'entrée (chercher les décorateurs dans le code).")
+            w(f"… {len(entries) - maxn * 6} autres points d'entrée (chercher les décorateurs et les routes dans le code).")
     else:
-        w("Aucun décorateur de route ou de commande reconnu : chercher les points d'entrée dans les manifestes et la configuration.")
+        w("Aucun décorateur de route ou de commande ni aucune route Express, Django ou Flask reconnus : chercher les points "
+          "d'entrée dans les manifestes et la configuration.")
     w("")
 
     # --- Communautés
@@ -188,7 +278,7 @@ def main():
                 key = json.loads(s["key_symbols"] or "[]")
             except ValueError:
                 key = []
-        w(f"### {c['name']} (id {c['id']}, {c['size']} symboles, cohésion {c['cohesion']:.2f})")
+        w(f"### {c['name']} (id {c['id']}, {c['size']} symboles, cohésion {float(c['cohesion'] or 0):.2f})")
         w("")
         w("- Fichiers : " + ", ".join(f"`{f}` ({k})" for f, k in files.most_common(8))
           + (f", … (+{len(files) - 8})" if len(files) > 8 else ""))
@@ -223,8 +313,8 @@ def main():
 
     # --- Flux d'exécution
     flows = q("select * from flows order by criticality desc") if "flows" in tbl else []
-    trivial = [f for f in flows if f["node_count"] <= 2]
-    flows = [f for f in flows if f["node_count"] > 2]
+    trivial = [f for f in flows if (f["node_count"] or 0) <= 2]
+    flows = [f for f in flows if (f["node_count"] or 0) > 2]
     w(f"## Flux d'exécution ({len(flows)} à plusieurs étapes, par criticité)")
     w("")
     for f in flows[:maxn * 2]:
@@ -234,7 +324,7 @@ def main():
             path = []
         steps = [nodes[i] for i in path if i in nodes]
         entry = nodes.get(f["entry_point_id"])
-        w(f"- **{f['name']}** (criticité {f['criticality']:.2f}, {f['node_count']} symboles, {f['file_count']} fichiers)"
+        w(f"- **{f['name']}** (criticité {float(f['criticality'] or 0):.2f}, {f['node_count']} symboles, {f['file_count']} fichiers)"
           + (f" — entrée {loc(entry)}" if entry else ""))
         if steps:
             w("  - " + " → ".join(f"`{s['name']}`" for s in steps[:10]) + (" → …" if len(steps) > 10 else ""))
@@ -323,7 +413,7 @@ def main():
             w("|---|---|---|---|---|---|")
             for r in risky:
                 n = by_qn.get(r["qualified_name"])
-                w(f"| {label(r['qualified_name'])} | {loc(n) if n else '?'} | {r['risk_score']:.2f} | {r['caller_count']}"
+                w(f"| {label(r['qualified_name'])} | {loc(n) if n else '?'} | {float(r['risk_score'] or 0):.2f} | {r['caller_count']}"
                   f" | {r['test_coverage']} | {'oui' if r['security_relevant'] else ''} |")
     w("")
 
@@ -336,30 +426,7 @@ def main():
         w(f"- `{n['name']}` ({n['kind']}, {n['line_end'] - n['line_start'] + 1} lignes) — {loc(n)}")
     w("")
 
-    # --- Fichiers hors graphe (manifestes, configuration, déploiement, gabarits, front…) et variables d'environnement
-    graphed = {rel(n["file_path"]) for n in nodes.values() if n["kind"] == "File"}
-    others = defaultdict(list)
-    env = defaultdict(set)
-    for dirpath, dirnames, filenames in os.walk(repo):
-        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS and not d.endswith(".egg-info"))
-        for fn in sorted(filenames):
-            full = os.path.join(dirpath, fn)
-            r = os.path.relpath(full, repo)
-            low = fn.lower()
-            if any(low.endswith(e) for e in SKIP_EXT):
-                continue
-            if r not in graphed:
-                others[os.path.dirname(r) or "."].append(fn)
-            try:
-                if os.path.getsize(full) > 512_000:
-                    continue
-                with open(full, encoding="utf-8", errors="ignore") as fh:
-                    for i, line in enumerate(fh, 1):
-                        for m in ENV_RE.finditer(line):
-                            if len(env[m.group(1)]) < 3:
-                                env[m.group(1)].add(f"{r}:{i}")
-            except OSError:
-                pass
+    # --- Fichiers hors graphe (parcourus avant les points d'entrée)
     w("## Fichiers hors graphe")
     w("")
     w("Non analysés par le graphe : manifestes, configuration, déploiement, gabarits d'interface, scripts, front. À lire selon le besoin.")
@@ -389,7 +456,7 @@ def main():
     every = sorted(graphed | {os.path.join(d, f) if d != "." else f for d, fs in others.items() for f in fs})
     env_files = {ref.rsplit(":", 1)[0] for refs in env.values() for ref in refs}
     for r in every:
-        if r.startswith(".") or OWN_DOCS_RE.search(r) or NOT_READ_RE.search(r):
+        if skipped(r) or OWN_DOCS_RE.search(r) or NOT_READ_RE.search(r):
             continue
         axes[axis_of(r, entry_files, env_files)].append(r)
     w("## Lecture par axe")

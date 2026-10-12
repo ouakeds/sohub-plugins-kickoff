@@ -69,6 +69,7 @@ La cartographie est un **index** (8 Ko au maximum) : identifiants, rattachements
 - Attribue les identifiants (CMP-xx, CU-xx, FL-xx, CT-xx, CTR-xx, CH-xx, I-xx) dans l'ordre de lecture du produit. Rattache chaque CU et chaque entité à ses composants d'après les chemins de fichiers ; un fichier rattaché à deux composants, ou à aucun, est un point à signaler (question de structure ou zone d'incertitude).
 - Fusionne les doublons (un même terme, une même zone d'incertitude vue par deux axes) ; une contradiction entre deux explorations devient une zone d'incertitude qui cite les deux preuves.
 - Emploie le même vocabulaire dans toutes les sections (celui du glossaire candidat).
+- Écris les questions de structure `[S…]` dans la section « Questions de structure » de la cartographie, **identiques** à celles de ton rapport : l'orchestrateur les y relit quand il reprend la validation sans relancer la consolidation.
 
 Rends à l'orchestrateur un rapport dans ce format exact (50 lignes au maximum) :
 
@@ -97,7 +98,7 @@ Tu rédiges **le lot** qui t'est confié, à partir de la cartographie, dont la 
 
 **Règles communes :**
 - Lis le gabarit de chaque document avant de l'écrire et respecte sa structure ; ses commentaires HTML sont des consignes, ne les recopie pas.
-- Un document listé comme **déjà présent** n'est jamais réécrit : complète seulement ses sections manquantes, par `Edit`.
+- Un document listé comme **déjà présent** n'est jamais réécrit ni complété : tu n'y touches pas. Si `docs/prd.md` existe sans `origine: rétro` (lot B), lis-le et reprends **ses** identifiants CU-xx et EF-xx dans tes renvois, à la place de ceux de la cartographie ; un CU de la cartographie absent de ce PRD se signale dans ton compte rendu (écart).
 - Frontmatter : ajoute `origine: rétro` à tous les documents ; `statut: brouillon` quand le gabarit a ce champ ; `maj` = date-heure fournie ; dans le PRD, `sources:` liste le dépôt avec sa branche et son commit (`<chemin du dépôt> @ <branche>/<sha court>`) puis les documents existants transmis.
 - **Marqueur de preuve** : chaque **élément** tiré du code (CU, EF, RG, écran, composant, entité, flux, contrat, choix constaté) porte **une** preuve, sous la forme *(déduit : `app/models.py:98`)* (chemin entre accents graves), à la fin de son bloc ou de sa ligne de tableau (une colonne « Preuve » peut la porter à la place du marqueur). Pas de preuve par phrase : deux preuves au plus par élément, quand il s'appuie sur deux fichiers.
 - **Rien d'inventé** : ce qui n'est pas observable devient une question ouverte du document (`Q-xx` dans le PRD, `QA-xx` dans l'architecture) avec son marqueur `[À CLARIFIER : …]` à l'endroit concerné. **10 questions au maximum par document**, les bloquantes d'abord : choisis parmi les zones d'incertitude I-xx de la cartographie qui touchent ton lot celles dont la réponse changerait le document (origine « I-xx ») ; les autres restent dans la cartographie, sans être recopiées. Un doute mineur sur un comportement se dit en une phrase dans le texte (« Points d'attention »), sans question.

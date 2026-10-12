@@ -10,7 +10,7 @@ Règles :
 - Une ligne par élément, une preuve `chemin/fichier.ext:ligne` (relative au dépôt) et la source dans les explorations (`S` = structure.md, `U` = usages.md, `D` = donnees.md). Pas de preuve → l'élément va dans « Zones d'incertitude ».
 - Les identifiants posés ici (CMP-xx, CU-xx, FL-xx, CT-xx, CTR-xx, CH-xx) sont repris tels quels par la rédaction : jamais renumérotés.
 - Pas d'ADR ni de décision en rétro-documentation : les choix constatés (CH-xx) vont dans l'architecture (§ 6) comme un constat, sans question sur leur raison.
-- `structure` passe de « proposée » à « validée » quand l'orchestrateur reporte les choix de l'utilisateur (section 9).
+- `structure` passe de « proposée » à « validée » quand l'orchestrateur reporte les choix de l'utilisateur (section 10).
 - Une section sans contenu s'écrit « Aucun ». -->
 
 # Cartographie — <nom du produit>
@@ -64,13 +64,19 @@ Règles :
 
 - <point> — <preuves>
 
-## 8. Zones d'incertitude
+## 8. Questions de structure
+
+<!-- Écrites par l'agent CARTOGRAPHIE, identiques à celles de son rapport : l'orchestrateur les relit ici pour reprendre la validation (`structure: proposée`) sans relancer la consolidation. 4 à 8 questions, les plus structurantes d'abord (composants à fusionner ou découper, périmètre à exclure, CU ambigus, nom du produit) ; chaque option tient en une ligne. -->
+
+- [S1] <titre> — Question : … — Options : (a) … ; (b) … — Recommandation : …
+
+## 9. Zones d'incertitude
 
 <!-- Ce que le code ne dit pas : intentions métier, objectifs, utilisateurs réels, exigences chiffrées, code mort, contradictions. Une ligne par question, fusionnée entre axes, avec l'endroit du doute. -->
 
 - [I-01] <question> — <fichier:ligne ou « général »>
 
-## 9. Structure validée
+## 10. Structure validée
 
 <!-- Rempli par l'orchestrateur après les choix de l'utilisateur. « En attente » tant que l'utilisateur n'a pas tranché. -->
 

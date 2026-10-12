@@ -10,7 +10,7 @@ Tu compares des runs de cadrage. Les chiffres viennent du script, jamais de toi.
 Argument reçu : `$ARGUMENTS` (dossiers de projets ; peut être vide).
 
 1. Si aucun dossier n'est donné, cherche les `*/.sohub-plugin/metrics.jsonl` du répertoire courant et compare tous les projets trouvés.
-2. Lance `python3 "${CLAUDE_SKILL_DIR}/../../hooks/metrics.py" compare <dossiers…>` et montre le tableau tel quel.
+2. Lance `python3 -I "${CLAUDE_SKILL_DIR}/../../hooks/metrics.py" compare <dossiers…>` et montre le tableau tel quel.
 3. Commente en quelques lignes, en ne citant que des chiffres du tableau :
    - **Qualité** : points d'ombre ouverts et bloquants au dernier eval, et la convergence d'une itération à l'autre ;
    - **Temps** : durée totale, et part des agents ;

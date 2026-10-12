@@ -16,28 +16,30 @@ Configuration de rendu : `${CLAUDE_SKILL_DIR}/puppeteer-config.json`
 - **Sous Linux, puppeteer extrait l'archive avec la commande `unzip`.** Sans elle, le téléchargement réussit mais l'extraction échoue et laisse un dossier vide `~/.cache/puppeteer/chrome-headless-shell/linux-<version>/` ; les essais suivants échouent alors avec « The browser folder … exists but the executable … is missing ». Avant de réessayer, supprime **ce seul dossier** (vérifie d'abord qu'il ne contient pas l'exécutable).
 - **Lis les erreurs utiles, pas l'aide.** En cas d'échec, `puppeteer browsers install` affiche son aide complète avant l'erreur : redirige la sortie dans un fichier et filtre les lignes `Error`, `Provider`, `cause` (sans les lignes `at …` de la pile). Les lignes `npm notice` sont sans importance.
 - **uv et ses outils s'installent dans `~/.local/bin`**, souvent absent du `PATH` d'un shell neuf : vérifie `uv` et `code-review-graph` par leur chemin complet (`~/.local/bin/uv`, `~/.local/bin/code-review-graph`) s'ils ne sont pas trouvés par leur nom.
+- **Sous WSL, un binaire Windows ne compte pas.** Le `PATH` de WSL inclut souvent celui de Windows : `npm --version` peut répondre via le Node Windows (`/mnt/c/Program Files/nodejs/npm`) alors que `node` Linux manque, et mmdc lancé ainsi ne trouve ni Node ni le navigateur Linux. Pour `node`, `npm`, `npx`, `mmdc`, `redocly` et `asyncapi`, vérifie d'abord l'emplacement avec `command -v <outil>` (nvm rechargé) : un chemin sous `/mnt/` (binaire Windows) vaut **absent**, quelle que soit la version affichée. Vérifie toujours `node` lui-même, pas seulement `npm`.
+- **Les hooks de métriques lancent `python3 -I`** à chaque fin d'agent et de tour, dans toutes les sessions : `python3` doit être trouvé **dans le `PATH`** du processus de Claude Code. Sous Windows natif (hors WSL), l'installeur python.org ne crée souvent que `python` / `py`, et `python3` peut n'être que l'alias du Microsoft Store (`%LOCALAPPDATA%\Microsoft\WindowsApps\python3.exe`, qui ouvre le Store au lieu de lancer Python) : vérifie que `python3 --version` affiche bien une version ; sinon, propose d'installer Python 3 depuis python.org (case « Add python.exe to PATH ») ou `winget install Python.Python.3.12`, et de désactiver l'alias du Store (Paramètres → Applications → Alias d'exécution d'application). Sans `python3`, les métriques ne sont pas enregistrées (les hooks échouent sans bloquer).
 - **Regroupe ce qui demande `sudo`** en une seule commande pour l'utilisateur, plutôt qu'une par problème.
 
 ## Dépendances
 
 | Dépendance | Sert à | Vérification | Obligatoire |
 |---|---|---|---|
-| `python3` | hooks de métriques, `/compare`, script de `/confluence-sync` | `python3 --version` | oui |
+| `python3` (dans le `PATH`, y compris sous Windows natif) | hooks de métriques, `/compare`, script de `/confluence-sync` | `command -v python3 && python3 --version` (Windows natif : `where python3`, hors alias du Store) | oui |
 | PyYAML (module Python `yaml`) | lecture des spécifications de `docs/contrats/` (`/openapi`) | `python3 -c "import yaml; print(yaml.__version__)"` | pour les contrats (contournable par `npx js-yaml`) |
 | `curl` | dépôt des images et des spécifications sur Confluence (`/confluence-sync`), téléchargements | `curl --version` | pour la synchro |
 | `unzip` (Linux) | extraction du navigateur par puppeteer | `unzip -v` | pour les diagrammes (contournable, voir 3) |
-| Node.js ≥ 18 et `npm` | exécuter mermaid-cli | `node --version`, `npm --version` | pour les diagrammes |
-| `mmdc` (`@mermaid-js/mermaid-cli`) | rendu des diagrammes Mermaid en PNG | `mmdc --version` | pour les diagrammes |
+| Node.js ≥ 18 et `npm` (Linux sous WSL) | exécuter mermaid-cli | `command -v node npm npx` (aucun chemin sous `/mnt/`), puis `node --version`, `npm --version` | pour les diagrammes |
+| `mmdc` (`@mermaid-js/mermaid-cli`) | rendu des diagrammes Mermaid en PNG | `command -v mmdc` (pas sous `/mnt/`), puis `mmdc --version` | pour les diagrammes |
 | navigateur headless de mermaid-cli (`chrome-headless-shell`, version attendue par mermaid-cli) | rendu effectif | exécutable présent dans `~/.cache/puppeteer/chrome-headless-shell/linux-<version>/chrome-headless-shell-linux64/`, puis rendu de test (voir 4) | pour les diagrammes |
 | bibliothèques système du navigateur (Linux) | lancer le navigateur | `ldd <exécutable du navigateur> \| grep "not found"` vide | pour les diagrammes |
-| `redocly` (`@redocly/cli`) et `asyncapi` (`@asyncapi/cli`) | validation des spécifications OpenAPI et AsyncAPI (`/openapi`) | `redocly --version`, `asyncapi --version` (ou `npx --yes @redocly/cli --version`) | pour `/openapi` (sinon spécifications non validées) |
+| `redocly` (`@redocly/cli`) et `asyncapi` (`@asyncapi/cli`) | validation des spécifications OpenAPI et AsyncAPI (`/openapi`) | `command -v redocly asyncapi` (pas sous `/mnt/`), puis `redocly --version`, `asyncapi --version` (ou `npx --yes @redocly/cli --version`, avec un `npx` Linux) | pour `/openapi` (sinon spécifications non validées) |
 | `uv` | installer Code Review Graph | `uv --version` | pour `/reverse` |
 | `code-review-graph` (avec l'extra `communities`) | cartographie du code d'un projet existant | `code-review-graph --version` | pour `/reverse` |
 | connecteur Atlassian (MCP) | `/confluence-sync` | présence d'outils Atlassian (`ToolSearch` « atlassian confluence ») | pour la synchro |
 
 ## Procédure
 
-1. **Diagnostic.** Détecte le système (`uname -s`, et `/etc/os-release` sous Linux ; WSL si `uname -r` contient `microsoft`) puis lance toutes les vérifications du tableau (avec nvm rechargé s'il existe). N'installe encore rien. Affiche le diagnostic.
+1. **Diagnostic.** Détecte le système (`uname -s`, et `/etc/os-release` sous Linux ; WSL si `uname -r` contient `microsoft`) puis lance toutes les vérifications du tableau (avec nvm rechargé s'il existe). Sous WSL, un outil dont `command -v` renvoie un chemin sous `/mnt/` est noté « absent (binaire Windows) » et s'installe comme s'il manquait. Sous Windows natif, vérifie aussi que `python3` est trouvé dans le `PATH` (hooks de métriques). N'installe encore rien. Affiche le diagnostic.
 2. **Droits administrateur, en une fois.** Si des paquets système manquent déjà (python3, `python3-yaml`, curl, unzip, et sous Linux les bibliothèques du navigateur si celui-ci est présent — voir 4), donne à l'utilisateur **une seule** commande à lancer avec `!`, par exemple `! sudo apt-get install -y unzip libnss3 libnspr4` (Fedora : `sudo dnf install -y …` ; macOS : `brew install …`), puis revérifie. S'il ne veut pas, continue avec les contournements sans `sudo`.
 3. **Installations sans droits administrateur**, dans l'ordre du tableau, pour chaque dépendance manquante ou trop ancienne : propose via `AskUserQuestion` « Installer » (avec la commande exacte) / « Passer ». Commandes :
    - Node.js via nvm : `curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash`, puis, dans une **autre** commande, `source ~/.nvm/nvm.sh && nvm install --lts`, puis `source ~/.nvm/nvm.sh && node --version && npm --version`. Sur macOS, `brew install node` est aussi proposé.

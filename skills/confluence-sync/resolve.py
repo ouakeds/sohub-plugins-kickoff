@@ -17,11 +17,17 @@ symboliques `page:<clé>` et des marqueurs `{{spec:docs/contrats/<fichier>}}` / 
                                             fichiers à joindre → .sohub-plugin/sync/manifest.json
   rendre     <projet> <config puppeteer>    rend en PNG (mermaid-cli, en parallèle) les diagrammes des pages à
                                             publier dont l'image manque ou est périmée
-  lots       <projet> [nombre max]          écrit .sohub-plugin/sync/lot-<n>.json (pages à publier)
-  fusionner  <projet> <empreinte sources>   fusionne resultats-*.json dans confluence.json, supprime lots et résultats
+  lots       <projet> [--failed] [nombre max]   écrit .sohub-plugin/sync/lot-<n>.json (pages à publier) ; avec
+                                            --failed, seulement les pages en échec ou incomplètes de la dernière
+                                            fusion (.sohub-plugin/sync/failed.json)
+  fusionner  <projet> <empreinte sources>   fusionne resultats-*.json dans confluence.json, supprime lots et résultats,
+                                            écrit la liste des pages en échec dans .sohub-plugin/sync/failed.json
+  forget     <projet> <clé>                 oublie l'id d'une page (ou de la racine) supprimée à la main dans
+                                            Confluence : le squelette la recrée à la synchro
   upload     <projet> <fichier> <commande curl>   exécute la commande d'envoi renvoyée par createConfluenceAttachment
                                             après contrôle : fichier sous docs/ (ou PNG d'un diagramme extrait), cité
-                                            par un lot, hôte = site de confluence.json ou api.atlassian.com, options sûres
+                                            par un lot, hôte = site de confluence.json ou api.atlassian.com, options sûres ;
+                                            avec SOHUB_UPLOAD_DRY_RUN=1, affiche la commande validée sans l'exécuter (tests)
 
 Seul le dossier docs/ du projet est publié (sauf docs/eval/, historique du processus) : aucun fichier hors de docs/
 n'est lu dans une page ni joint.
@@ -30,9 +36,14 @@ import glob, hashlib, html, json, os, re, shlex, shutil, subprocess, sys
 from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor
 
-PROCESS = [(r'§', '« § »'), (r'(?m)^#{1,6}\s+\d+(?:\.\d+)*\.?\s', 'titre numéroté'),
-           (r'<h[1-6][^>]*>\s*\d+(?:\.\d+)*\.?\s', 'titre numéroté'), (r'\bI-\d{2}\b', 'identifiant de processus I-xx'),
-           (r'\bS[1-9]\b', 'identifiant de processus Sx'), (r'structure validée', '« structure validée »'),
+# Numéro de titre : « 1. », « 1) », « 2.3 », « 2.3. » — pas un nombre seul (« ## 404 Not Found »).
+_NUM = r'(?:\d+(?:\.\d+)+[.)]?|\d+[.)])\s'
+# Identifiant de processus seulement dans un contexte de processus : « S1 : », « (S1) », « [S1] », « (S1, S2) »…
+# (« Stockage sur S3 », « s3://… » ne sont pas visés)
+_CTX = lambda i: rf'[(\[]{i}[,)\]]|\b{i}\s*:(?!//)'
+PROCESS = [(r'§', '« § »'), (r'(?m)^#{1,6}\s+' + _NUM, 'titre numéroté'),
+           (r'<h[1-6][^>]*>\s*' + _NUM, 'titre numéroté'), (_CTX(r'I-\d{2}'), 'identifiant de processus I-xx'),
+           (_CTX(r'S[1-9]'), 'identifiant de processus Sx'), (r'structure validée', '« structure validée »'),
            (r'https?://[^\s)"]*atlassian\.net', 'URL Confluence écrite en dur')]
 LINK = re.compile(r'(?<=\]\()page:([\w.-]+)|(?<=href=")page:([\w.-]+)')
 IDS = re.compile(r'\b(?:CU|EF|RG|ENF|EC|CMP|FL|CTR|CH|QA|Q|OBJ|CT)-\d+\b')
@@ -185,13 +196,22 @@ def cmd_verifier(p):
     return 1 if errs else 0
 
 
+def contract_key(fichier, homonymes=()):
+    """Clé de la page Contrat d'un fichier de docs/contrats/ : « contrat-<nom> » (nom avant le premier point), ou
+    « contrat-<nom>-<type> » (type = segment suivant : openapi, asyncapi…) si un autre fichier porte le même nom."""
+    parts = os.path.basename(fichier).split('.')
+    nom, typ = parts[0], (parts[1] if len(parts) > 2 else '')
+    autres = [h for h in homonymes if os.path.basename(h) != os.path.basename(fichier) and os.path.basename(h).split('.')[0] == nom]
+    return f'contrat-{nom}-{typ}' if autres and typ else f'contrat-{nom}'
+
+
 def migrate(cfg):
     pages = cfg.setdefault('pages', {})
+    old_contracts = [k for k in pages if re.match(r'docs/contrats/[^.]+\.', k)]
     for k in list(pages):
         new = OLD.get(k)
-        if not new:
-            m = re.match(r'docs/contrats/([^.]+)\.', k)
-            new = f'contrat-{m.group(1)}' if m else None
+        if not new and k in old_contracts:
+            new = contract_key(k, old_contracts)
         if not new:
             m = re.match(r'docs/adr/(\d{4})-', k)
             new = f'adr-{m.group(1)}' if m else None
@@ -232,6 +252,9 @@ def cmd_ordre(p, enfants_path):
     ids = dict((k, v.get('id')) for k, v in cfg.get('pages', {}).items()); ids['racine'] = (cfg.get('racine') or {}).get('id')
     enfants = load(enfants_path, {})
     where = {c: par for par, cs in enfants.items() for c in cs}
+    # une page inconnue côté Confluence (supprimée à la main : à oublier avec forget) n'est ni déplacée ni cible
+    present = set(enfants) | set(where)
+    ids = {k: v for k, v in ids.items() if v in present}
     moves = []
     for x in plan['pages'][1:]:
         pid, parid = ids.get(x['cle']), ids.get(x['parent'])
@@ -242,8 +265,11 @@ def cmd_ordre(p, enfants_path):
             where[pid] = parid
     for par in {x['parent'] for x in plan['pages'][1:]}:
         parid = ids.get(par)
-        want = [ids[x['cle']] for x in plan['pages'] if x.get('parent') == par and ids.get(x['cle'])]
-        have = [c for c in enfants.get(parid, []) if c in want]
+        if not parid:
+            continue
+        have = [c for c in enfants.get(parid, []) if c in ids.values()]
+        want = [ids[x['cle']] for x in plan['pages'] if x.get('parent') == par and ids.get(x['cle']) in have]
+        have = [c for c in have if c in want]
         for i in range(len(want) - 2, -1, -1):  # place chaque page avant la suivante attendue
             if have.index(want[i]) > have.index(want[i + 1]):
                 moves.append(dict(id=want[i], position='before', targetId=want[i + 1]))
@@ -251,13 +277,33 @@ def cmd_ordre(p, enfants_path):
     print(json.dumps(moves, ensure_ascii=False))
 
 
+def cmd_forget(p, cle):
+    """Page supprimée à la main dans Confluence : retire son id de confluence.json pour que le squelette la recrée."""
+    cfg = load(cfg_path(p), {})
+    k = cfg.get('racine') if cle == 'racine' else cfg.get('pages', {}).get(cle)
+    if not k or not k.get('id'):
+        print(f'clé inconnue ou sans id dans confluence.json : « {cle} »'); return 1
+    for f in ('id', 'url', 'statut', 'diagrammes', 'pieces_jointes', 'maj'):
+        k.pop(f, None)
+    k['empreinte'] = None
+    save(cfg_path(p), cfg)
+    print(f'{cle} oubliée : elle sera recréée par le squelette à la prochaine synchro')
+    return 0
+
+
 def statut_cadrage(p):
-    def st(f):
-        m = re.search(r'^statut:\s*(.+)$', open(f, encoding='utf-8').read(), re.M) if os.path.isfile(f) else None
+    def field(f, name):
+        if not os.path.isfile(f):
+            return None
+        with open(f, encoding='utf-8') as fh:
+            m = re.search(rf'^{name}:\s*(.+)$', fh.read(), re.M)
         return m.group(1).strip() if m else None
+    st = lambda f: field(f, 'statut')
     d = os.path.join(p, 'docs')
     ok = all(st(os.path.join(d, f)) == 'validé' for f in ('prd.md', 'architecture.md', 'adr/index.md')) and st(os.path.join(p, '.sohub-plugin', 'backlog.md')) == 'validé'
-    return ('Cadrage validé', '#36B37E') if ok else ('En cadrage', '#FF8B00')
+    if ok:
+        return ('Cadrage validé', '#36B37E')
+    return ('Rétro-documenté', '#6554C0') if field(os.path.join(d, 'prd.md'), 'origine') == 'rétro' else ('En cadrage', '#FF8B00')
 
 
 def titre_retenu(x, k):
@@ -269,7 +315,14 @@ def titre_retenu(x, k):
 def cmd_resoudre(p, date):
     cfg = migrate(load(cfg_path(p), {})); save(cfg_path(p), cfg)
     plan = load(os.path.join(sync_dir(p), 'plan.json'))
+    if not plan or not plan.get('pages'):
+        print('plan.json absent ou illisible : lancer la mise en page'); return 1
+    absents = [os.path.relpath(corps_path(p, x), p) for x in plan['pages'] if not os.path.isfile(corps_path(p, x))]
+    if absents:
+        print('CORPS ABSENT(S) : ' + ', '.join(absents) + ' — relancer la mise en page (verifier)'); return 1
     known = dict(cfg.get('pages', {})); known['racine'] = cfg.get('racine') or {}
+    refuse = bool(cfg.get('statut_natif_refuse'))
+    rendu = mmdc_cmd() is not None
     out_dir = os.path.join(sync_dir(p), 'final'); os.makedirs(out_dir, exist_ok=True)
     for f in glob.glob(os.path.join(out_dir, '*')):
         os.remove(f)
@@ -308,7 +361,9 @@ def cmd_resoudre(p, date):
             etat = 'inconnue'
         elif k.get('empreinte') != empreinte or k.get('titre') != titre:
             etat = 'à publier'
-        elif k.get('statut') not in (nat[0], x.get('statut')):
+        elif rendu and k.get('diagrammes') is not None and k['diagrammes'] < len(diagrammes):
+            etat = 'à publier'  # publiée sans images (mmdc absent alors) : les diagrammes peuvent maintenant être rendus
+        elif not refuse and k.get('statut') not in (nat[0], x.get('statut')):
             etat = 'statut seul'
         else:
             etat = 'inchangée'
@@ -318,7 +373,7 @@ def cmd_resoudre(p, date):
     racine = pages[0]
     if racine['etat'] in ('inchangée', 'statut seul') and any(x['etat'] in ('à publier', 'inconnue') for x in pages[1:]):
         racine['etat'] = 'à publier'  # le sommaire et la date de synchro suivent les autres pages
-    save(os.path.join(sync_dir(p), 'manifest.json'), dict(projet=plan.get('projet'), pages=pages))
+    save(os.path.join(sync_dir(p), 'manifest.json'), dict(projet=plan.get('projet'), statut_natif_refuse=refuse, pages=pages))
     for x in pages:
         print(f"{x['etat']:11} {x['cle']:28} {x['titre']}")
     if missing:
@@ -348,11 +403,31 @@ def extract_diagrams(p, cle, text, fmt):
     return out
 
 
+WIN_MOUNT = '/mnt/'  # sous WSL, disques Windows : un mmdc Windows trouvé là ne sait pas lire les chemins Linux
+
+
+def is_wsl():
+    try:
+        return 'WSL_DISTRO_NAME' in os.environ or 'microsoft' in open('/proc/version').read().lower()
+    except OSError:
+        return False
+
+
 def mmdc_cmd():
-    if shutil.which('mmdc'):
-        return ['mmdc']
+    path = os.environ.get('PATH', os.defpath).split(os.pathsep)
+    if is_wsl():
+        path = [d for d in path if not os.path.realpath(d or '.').startswith(WIN_MOUNT)]
+    found = shutil.which('mmdc', path=os.pathsep.join(path))
+    if found and not (is_wsl() and os.path.realpath(found).startswith(WIN_MOUNT)):
+        return [found]
     nvm = os.path.expanduser('~/.nvm/nvm.sh')
-    return ['bash', '-c', f'source {nvm} && mmdc "$@"', 'mmdc'] if os.path.isfile(nvm) else None
+    return ['bash', '-c', f'source {shlex.quote(nvm)} && mmdc "$@"', 'mmdc'] if os.path.isfile(nvm) else None
+
+
+def png_ok(dg):
+    """Vrai si le PNG du diagramme existe et n'est pas plus ancien que sa source .mmd."""
+    png = dg.get('png')
+    return bool(png) and os.path.isfile(png) and (not os.path.isfile(dg.get('mmd') or '') or os.path.getmtime(png) >= os.path.getmtime(dg['mmd']))
 
 
 def cmd_rendre(p, config):
@@ -364,8 +439,12 @@ def cmd_rendre(p, config):
         print('MMDC ABSENT : diagrammes non rendus (proposer /install)'); return 1
 
     def run(dg):
+        if os.path.isfile(dg['png']):  # jamais d'image périmée si le rendu échoue
+            os.remove(dg['png'])
         r = subprocess.run(base + ['-i', dg['mmd'], '-o', dg['png'], '-b', 'white', '-s', '2', '-p', config], capture_output=True, text=True)
         if r.returncode != 0 or not os.path.isfile(dg['png']):
+            if os.path.isfile(dg['png']):
+                os.remove(dg['png'])
             err = next((l for l in (r.stderr + r.stdout).splitlines() if 'Error' in l), (r.stderr or r.stdout).strip()[-200:])
             return f"ÉCHEC {os.path.basename(dg['mmd'])} : {err}"
         return None
@@ -377,22 +456,31 @@ def cmd_rendre(p, config):
     return 0
 
 
-def cmd_lots(p, n=6):
+def cmd_lots(p, n=6, failed=False):
     cfg = load(cfg_path(p), {}); man = load(os.path.join(sync_dir(p), 'manifest.json'))
-    todo = [x for x in man['pages'] if x['etat'] == 'à publier']
+    if not man:
+        print('manifest.json absent : lancer resoudre'); return 1
+    if failed:
+        keys = set(load(os.path.join(sync_dir(p), 'failed.json'), []) or [])
+        todo = [x for x in man['pages'] if x['cle'] in keys]
+    else:
+        todo = [x for x in man['pages'] if x['etat'] == 'à publier']
     for f in glob.glob(os.path.join(sync_dir(p), 'lot-*.json')):
         os.remove(f)
-    size = lambda x: 1 + 2 * len([d for d in x.get('diagrammes', []) if os.path.isfile(d['png'])]) + len(x.get('pieces_jointes', [])) + os.path.getsize(x['corps']) // 20000
+    size = lambda x: 1 + 2 * len([d for d in x.get('diagrammes', []) if png_ok(d)]) + len(x.get('pieces_jointes', [])) + os.path.getsize(x['corps']) // 20000
     lots = [[] for _ in range(min(n, len(todo)))]
     for x in sorted(todo, key=size, reverse=True):
         min(lots, key=lambda l: sum(map(size, l))).append(x)
     for i, l in enumerate(lots, 1):
-        save(os.path.join(sync_dir(p), f'lot-{i}.json'), dict(cloudId=cfg.get('cloudId'), pages=[
+        save(os.path.join(sync_dir(p), f'lot-{i}.json'), dict(cloudId=cfg.get('cloudId'), statut_natif_refuse=bool(cfg.get('statut_natif_refuse')), pages=[
             dict(cle=x['cle'], id=x['id'], titre=x['titre'], corps=x['corps'], format=x['format'], statut=x['statut'],
                  statut_local=x['statut_local'], maj=x['maj'], empreinte=x['empreinte'], url=x['url'],
-                 diagrammes=[dict(png=d['png'] if os.path.isfile(d['png']) else None, titre=d['titre']) for d in x.get('diagrammes', [])],
+                 diagrammes=[dict(png=d['png'] if png_ok(d) else None, titre=d['titre']) for d in x.get('diagrammes', [])],
                  pieces_jointes=x.get('pieces_jointes', [])) for x in l]))
         print(f"lot-{i} : " + ', '.join(x['cle'] for x in l))
+    if not todo:
+        print('aucune page à publier')
+    return 0
 
 
 def cmd_fusionner(p, src_hash):
@@ -400,9 +488,14 @@ def cmd_fusionner(p, src_hash):
     echecs = []
     for f in sorted(glob.glob(os.path.join(sync_dir(p), 'resultats-*.json'))):
         for k, v in load(f, {}).items():
-            target = cfg['racine'] if k == 'racine' else cfg.setdefault('pages', {}).setdefault(k, {})
+            if k == 'racine':
+                target = cfg['racine'] = cfg.get('racine') or {}
+            else:
+                target = cfg.setdefault('pages', {}).setdefault(k, {})
             mk = man.get(k) or {}
-            attendus = len([d for d in mk.get('diagrammes', []) if os.path.isfile(d['png'])])
+            attendus = len([d for d in mk.get('diagrammes', []) if png_ok(d)])
+            if v.get('statut_natif') == 'refusé':
+                cfg['statut_natif_refuse'] = True  # statuts personnalisés désactivés ou droits : on ne les redemande plus
             incomplet = v.get('ok') and (v.get('diagrammes', 0) < attendus or v.get('pieces_jointes', 0) < len(mk.get('pieces_jointes', [])))
             if incomplet:
                 echecs.append((k, f"incomplète : {v.get('diagrammes', 0)}/{attendus} diagramme(s), {v.get('pieces_jointes', 0)}/{len(mk.get('pieces_jointes', []))} pièce(s) jointe(s) — republiée à la prochaine synchro"))
@@ -417,6 +510,7 @@ def cmd_fusionner(p, src_hash):
                 target['empreinte'] = None; echecs.append((k, v.get('erreurs')))
     cfg['transformation'] = dict(empreinte=src_hash)
     save(cfg_path(p), cfg)
+    save(os.path.join(sync_dir(p), 'failed.json'), sorted({k for k, _ in echecs}))  # pour lots --failed
     for f in glob.glob(os.path.join(sync_dir(p), 'lot-*.json')) + glob.glob(os.path.join(sync_dir(p), 'resultats-*.json')):
         os.remove(f)
     for k, e in echecs:
@@ -478,6 +572,8 @@ def cmd_upload(p, fichier, commande):
         i += 1
     if not urls or any(urlparse(u).scheme != 'https' or urlparse(u).hostname not in hosts for u in urls):
         print('REFUS : adresse non permise (https vers ' + ' ou '.join(sorted(hosts)) + ' seulement)'); return 1
+    if os.environ.get('SOHUB_UPLOAD_DRY_RUN') == '1':
+        print('DRY-RUN : ' + shlex.join(argv)); return 0
     r = subprocess.run(argv, capture_output=True, text=True)
     sys.stdout.write(r.stdout)
     if r.returncode:
@@ -489,11 +585,15 @@ if __name__ == '__main__':
     a = sys.argv[1:]
     cmds = {'sources': (cmd_sources, 2), 'verifier': (cmd_verifier, 1), 'squelette': (cmd_squelette, 1), 'enregistrer': (cmd_enregistrer, 5),
             'ordre': (cmd_ordre, 2), 'resoudre': (cmd_resoudre, 2), 'rendre': (cmd_rendre, 2), 'lots': (cmd_lots, 1), 'fusionner': (cmd_fusionner, 2),
-            'documents': (cmd_documents, 1), 'upload': (cmd_upload, 3)}
+            'documents': (cmd_documents, 1), 'upload': (cmd_upload, 3), 'forget': (cmd_forget, 2)}
     if not a or a[0] not in cmds or len(a) - 1 < cmds[a[0]][1]:
         print(__doc__, file=sys.stderr); sys.exit(2)
     fn, n = cmds[a[0]]
     args = [os.path.abspath(a[1])] + a[2:]
-    if a[0] == 'lots' and len(args) > 1:
-        args[1] = int(args[1])
+    if a[0] == 'lots':
+        rest = [x for x in args[1:] if x != '--failed']
+        try:
+            args = [args[0], int(rest[0]) if rest else 6, '--failed' in args[1:]]
+        except ValueError:
+            print(__doc__, file=sys.stderr); sys.exit(2)
     sys.exit(fn(*args) or 0)

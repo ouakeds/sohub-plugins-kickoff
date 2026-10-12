@@ -6,7 +6,7 @@
 
 *Plugin Claude Code de cadrage de projet : PRD, architecture, ADR, user stories, contrats OpenAPI et publication Confluence, pour que l'IA qui développera n'ait rien à deviner ni à inventer.*
 
-[![Version](https://img.shields.io/badge/version-0.13.1-blue)](.claude-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-0.13.2-blue)](.claude-plugin/plugin.json)
 [![Licence MIT](https://img.shields.io/badge/licence-MIT-green)](LICENSE)
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://docs.claude.com/en/docs/claude-code/plugins)
 [![Python 3](https://img.shields.io/badge/Python-3-3776AB?logo=python&logoColor=white)](#-stack--technos)
@@ -95,7 +95,7 @@ Pour développer le plugin, voir [Tester en local](#-tester-en-local).
 | **Analyse de code** | [Code Review Graph](https://github.com/tirth8205/code-review-graph) (installé avec `uv`) | `/reverse` |
 | **Contrats** | OpenAPI 3.1, AsyncAPI 3.0, JSON Schema — validés par `redocly` et `asyncapi` | `/openapi` → `docs/contrats/` |
 | **Diagrammes** | Mermaid, rendus en PNG par mermaid-cli (Node.js, Chrome headless via puppeteer) | `/confluence-sync` |
-| **Publication** | Confluence, via le connecteur Atlassian (MCP) et `curl` pour les pièces jointes | `/confluence-sync` |
+| **Publication** | Confluence, via le connecteur Atlassian (MCP) ; pièces jointes envoyées par `curl` à travers `resolve.py upload`, qui contrôle chaque envoi | `/confluence-sync` |
 | **Formats lus** | Texte, Markdown, Mermaid, PlantUML, PDF, images | `/create-project [chemins…]` |
 
 ## 📂 Documents produits
@@ -201,9 +201,16 @@ agents/publisher.md      # Agent de publication : publie un lot de pages Conflue
 templates/               # Gabarits : prd, architecture, adr, adr-index, glossary, backlog, story, eval, confluence-tree, mapping
 hooks/hooks.json         # Hooks SubagentStop et Stop → hooks/metrics.py
 hooks/metrics.py         # Métriques : enregistrement (hooks), rendu de metrics.md, comparaison de runs
+tests/                   # Tests de non-régression des scripts (bash tests/run.sh)
 ```
 
 ## 🧪 Tester en local
+
+Tests des scripts (Python 3, bibliothèque standard, sans réseau) :
+
+```bash
+bash tests/run.sh
+```
 
 Lancer Claude Code avec le plugin chargé directement :
 
