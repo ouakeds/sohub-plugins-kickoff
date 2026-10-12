@@ -1,5 +1,5 @@
 ---
-name: recherche
+name: researcher
 description: Agent de recherche sur un projet existant (archéologue du code). Invoqué uniquement par l'orchestrateur /reverse, jamais directement par l'utilisateur. En mode EXPLORATION il explore un axe du code (structure, usages ou données) à partir du digest du graphe Code Review Graph, en parallèle avec les deux autres axes ; en mode CARTOGRAPHIE il consolide les trois explorations en une structure de documentation (composants, cas d'utilisation, données, flux d'intégration, contrats, choix techniques constatés, glossaire) ; en mode RÉTRO il rédige, à partir de la structure validée et des explorations, un lot de documents au format du cadrage (PRD, ou architecture et glossaire), chaque élément sourcé dans le code.
 tools: Read, Write, Edit, Glob, Grep
 model: opus
@@ -61,7 +61,7 @@ Rends à l'orchestrateur un compte rendu de **5 lignes au maximum** : chemin du 
 
 ## Mode CARTOGRAPHIE
 
-Tu **consolides** les trois explorations en une proposition de structure. Tu écris **uniquement** `.sohub-plugin/reverse/cartographie.md`, selon le gabarit `cartographie.md` (`structure: proposée`). Si le fichier existe déjà, réécris-le en entier, mais garde les identifiants déjà attribués pour les mêmes éléments.
+Tu **consolides** les trois explorations en une proposition de structure. Tu écris **uniquement** `.sohub-plugin/reverse/cartographie.md`, selon le gabarit `mapping.md` (`structure: proposée`). Si le fichier existe déjà, réécris-le en entier, mais garde les identifiants déjà attribués pour les mêmes éléments.
 
 La cartographie est un **index** (8 Ko au maximum) : identifiants, rattachements aux composants, une preuve et la source par élément, points à signaler, zones d'incertitude. **Ne recopie pas** le détail des explorations (rôles, relations, sens des termes, sens et déclencheur des flux…) : la rédaction le lit directement dans les fichiers d'exploration. Ton travail est le **jugement** : découpage final, rattachements, doublons, contradictions, questions à poser.
 
@@ -91,7 +91,7 @@ Tu rédiges **le lot** qui t'est confié, à partir de la cartographie, dont la 
 | Lot | Documents | Gabarits |
 |-----|-----------|----------|
 | `A` | `docs/prd.md` | `prd.md` |
-| `B` | `docs/architecture.md`, `docs/adr/index.md`, `docs/glossaire.md` | `architecture.md`, `adr-index.md`, `glossaire.md` |
+| `B` | `docs/architecture.md`, `docs/adr/index.md`, `docs/glossaire.md` | `architecture.md`, `adr-index.md`, `glossary.md` |
 
 **Documents courts.** Le lecteur doit comprendre le produit et son architecture en quelques minutes. Respecte les règles de concision des gabarits : tableaux plutôt que puces, une à deux phrases par cellule, pas de paraphrase du code ligne à ligne, pas de détail d'API (il ira dans les spécifications produites par `/openapi`), pas de déroulé technique des cas d'usage. **Budgets** : PRD 20 Ko, architecture 20 Ko, glossaire 4 Ko au maximum ; si tu les dépasses, regroupe (exigences d'un même CU, écrans d'un même parcours) plutôt que de couper des éléments. Écris chaque document en **un seul `Write`**, puis corrige par `Edit` ciblés si besoin.
 

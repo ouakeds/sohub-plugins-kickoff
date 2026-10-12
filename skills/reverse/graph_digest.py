@@ -5,7 +5,7 @@ Usage : graph_digest.py <dépôt> <fichier de sortie .md> [--max N]
 
 Lit <dépôt>/.code-review-graph/graph.db (SQLite, schéma code-review-graph ≥ 2.3)
 en lecture seule, avec la seule bibliothèque standard. Les chemins sont rendus
-relatifs au dépôt. Le digest sert d'entrée à l'agent `recherche` (modes
+relatifs au dépôt. Le digest sert d'entrée à l'agent `researcher` (modes
 EXPLORATION et CARTOGRAPHIE) : il dit où regarder, pas ce que fait le produit,
 et répartit les fichiers à lire entre les trois axes d'exploration.
 """

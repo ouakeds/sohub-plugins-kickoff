@@ -17,3 +17,5 @@ Argument reçu : `$ARGUMENTS` (dossiers de projets ; peut être vide).
    - **Coût** : coût total, la part de l'entrée par rapport à la sortie, et le coût par itération ;
    - le meilleur compromis entre qualité, temps et coût, en précisant ce qui diffère entre les runs (version du plugin, modèles · effort, étape atteinte, nombre d'itérations).
 4. Signale les limites qui faussent la comparaison : runs arrêtés à des étapes différentes, nombre d'itérations différent, orchestrateur non mesuré. Rappelle aussi que la qualité est mesurée par l'agent évaluateur lui-même, donc deux runs ne se comparent qu'avec le même évaluateur (même version du plugin et même modèle).
+
+**Langue** : adresse-toi à l'utilisateur (questions, options, résumés, comptes rendus) dans la langue qu'il emploie.

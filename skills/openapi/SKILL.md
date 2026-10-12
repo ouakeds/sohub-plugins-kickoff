@@ -1,17 +1,17 @@
 ---
 name: openapi
-description: Produit ou met à jour les spécifications machine des contrats d'un projet dans docs/contrats/ — OpenAPI 3.1 pour une API HTTP exposée ou pour une API tierce appelée par le projet (limitée aux opérations utilisées, importable dans Postman), AsyncAPI 3.0 pour des événements ou une file de messages, JSON Schema pour un format de fichier — à partir de l'index des contrats de l'architecture (§ 5.2) : extraites du code pour un projet existant (/reverse), conçues d'après le PRD et l'architecture pour un cadrage neuf (/kickoff). Valide chaque spécification avec un linter et met à jour l'index. À utiliser quand l'utilisateur veut générer, régénérer ou mettre à jour un contrat OpenAPI / AsyncAPI, ou documenter les API d'un projet, y compris les services externes qu'il appelle.
+description: Produit ou met à jour les spécifications machine des contrats d'un projet dans docs/contrats/ — OpenAPI 3.1 pour une API HTTP exposée ou pour une API tierce appelée par le projet (limitée aux opérations utilisées, importable dans Postman), AsyncAPI 3.0 pour des événements ou une file de messages, JSON Schema pour un format de fichier — à partir de l'index des contrats de l'architecture (§ 5.2) : extraites du code pour un projet existant (/reverse), conçues d'après le PRD et l'architecture pour un cadrage neuf (/create-project). Valide chaque spécification avec un linter et met à jour l'index. À utiliser quand l'utilisateur veut générer, régénérer ou mettre à jour un contrat OpenAPI / AsyncAPI, ou documenter les API d'un projet, y compris les services externes qu'il appelle.
 argument-hint: "[chemin du projet] [CTR-xx…]"
 allowed-tools: Agent, AskUserQuestion, Read, Write, Edit, Glob, Grep, Bash, Skill
 ---
 
-Tu produis les **spécifications des contrats** d'un projet : des fichiers machine, importables dans Swagger UI, Postman ou un générateur de code, qui remplacent toute description d'API en prose. L'architecture n'en garde qu'un index (§ 5.2) ; `/sync` publie chaque spécification sur Confluence (résumé des opérations + fichier joint).
+Tu produis les **spécifications des contrats** d'un projet : des fichiers machine, importables dans Swagger UI, Postman ou un générateur de code, qui remplacent toute description d'API en prose. L'architecture n'en garde qu'un index (§ 5.2) ; `/confluence-sync` publie chaque spécification sur Confluence (résumé des opérations + fichier joint).
 
 Argument reçu : `$ARGUMENTS` (chemin du projet, puis éventuellement des identifiants `CTR-xx` pour se limiter à ces contrats ; peut être vide).
 
 ## Dossier du projet
 
-Comme `/sync` : chemin passé en argument ; sinon le répertoire courant s'il contient `docs/prd.md` ; sinon les `*/docs/prd.md` des sous-dossiers directs (plusieurs → demande lequel via `AskUserQuestion`). Il faut `docs/architecture.md` : s'il manque, dis-le, propose `/kickoff` (projet neuf) ou `/reverse` (projet existant) et arrête-toi.
+Comme `/confluence-sync` : chemin passé en argument ; sinon le répertoire courant s'il contient `docs/prd.md` ; sinon les `*/docs/prd.md` des sous-dossiers directs (plusieurs → demande lequel via `AskUserQuestion`). Il faut `docs/architecture.md` : s'il manque, dis-le, propose `/create-project` (projet neuf) ou `/reverse` (projet existant) et arrête-toi.
 
 ## Contrats à spécifier
 
@@ -66,12 +66,14 @@ Une spécification existante n'est pas réécrite en bloc : mets-la à jour (`Ed
    - OpenAPI : `redocly lint <fichier> --format stylish` (ou `npx --yes @redocly/cli lint …`) ;
    - AsyncAPI : `asyncapi validate <fichier>` (ou `npx --yes @asyncapi/cli validate …`) ;
    - JSON Schema : vérifie au moins qu'il se lit (`python3 -c "import json,sys; json.load(open(sys.argv[1]))" <fichier>`).
-   Corrige les **erreurs** et relance, trois passes au plus ; les avertissements de style sont seulement comptés. Si l'outil n'est pas disponible (Node absent, pas de réseau), propose une fois via `AskUserQuestion` « Installer avec /doctor » (→ invoque le skill `sohub-plugins-kickoff:doctor`, puis relance la validation) / « Continuer sans validation » ; vérifie alors au moins que le YAML se lit (`python3 -c "import yaml…"`) et signale les fichiers non validés.
+   Corrige les **erreurs** et relance, trois passes au plus ; les avertissements de style sont seulement comptés. Si l'outil n'est pas disponible (Node absent, pas de réseau), propose une fois via `AskUserQuestion` « Installer avec /install » (→ invoque le skill `sohub-plugins-spec:install`, puis relance la validation) / « Continuer sans validation » ; vérifie alors au moins que le YAML se lit (`python3 -c "import yaml…"`) et signale les fichiers non validés.
 4. **Index.** Dans le § 5.2 de l'architecture, remplace pour chaque contrat traité la cellule « Spécification » par le chemin du fichier (`docs/contrats/<fichier>`), sans toucher au reste ; mets à jour son champ `maj` et ajoute au journal des décisions une ligne `| <date> | OPENAPI | Spécification produite (ou mise à jour) par /openapi | CTR-xx |`. Un fichier de `docs/contrats/` absent de l'index est signalé, pas supprimé.
    **Cohérence du reste du document** : cherche (`Grep` sur « /openapi », « spécification », « À produire ») toute mention d'une spécification manquante pour un contrat désormais spécifié — contrôles de conception (§ 13, gate « Intégration d'abord » : le manque de spécification n'y est plus un écart ; s'il ne reste d'autre écart que l'absence de tests de contrat ou d'intégration, la justification ne cite plus que celle-ci), suivi de la complexité (§ 14 : la ligne ou la partie de ligne sur les contrats sans spécification est retirée), points d'attention des composants (§ 2) — et mets-la à jour avec `Edit`, sans toucher au reste. Liste ces corrections dans le compte rendu.
-5. **Compte rendu** : fichiers écrits ou mis à jour, exposés puis consommés (avec le nombre d'opérations, canaux ou propriétés), contrats ignorés et pourquoi, résultat de la validation (erreurs restantes, avertissements), questions `x-questions` relevées (les plus importantes d'abord) et, pour un cadrage neuf, nombre de propositions `x-propose` à confirmer. Puis propose via `AskUserQuestion` « Publier sur Confluence » (→ invoque le skill `sohub-plugins-kickoff:sync` avec le chemin du projet) / « Arrêter là ».
+5. **Compte rendu** : fichiers écrits ou mis à jour, exposés puis consommés (avec le nombre d'opérations, canaux ou propriétés), contrats ignorés et pourquoi, résultat de la validation (erreurs restantes, avertissements), questions `x-questions` relevées (les plus importantes d'abord) et, pour un cadrage neuf, nombre de propositions `x-propose` à confirmer. Puis propose via `AskUserQuestion` « Publier sur Confluence » (→ invoque le skill `sohub-plugins-spec:confluence-sync` avec le chemin du projet) / « Arrêter là ».
 
 ## Règles
 
 - Tu n'écris que dans `docs/contrats/` et, dans `docs/architecture.md`, dans le § 5.2, les mentions de spécification manquante (§ 2, 13, 14), le champ `maj` et le journal. Tu ne modifies jamais le code du dépôt.
-- Le code n'est lu qu'en local ; aucun extrait n'est envoyé ailleurs que dans `docs/contrats/` (et sur Confluence seulement si l'utilisateur lance `/sync`).
+- Le code n'est lu qu'en local ; aucun extrait n'est envoyé ailleurs que dans `docs/contrats/` (et sur Confluence seulement si l'utilisateur lance `/confluence-sync`).
+
+**Langue** : adresse-toi à l'utilisateur (questions, options, résumés, comptes rendus) dans la langue qu'il emploie.

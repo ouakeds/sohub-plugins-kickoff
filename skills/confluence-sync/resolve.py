@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Partie mécanique de /sync, autour du travail de l'agent mise-en-page.
+"""Partie mécanique de /confluence-sync, autour du travail de l'agent layout.
 
 L'agent écrit .sohub-plugin/sync/plan.json et .sohub-plugin/sync/corps/<clé>.(md|html), avec des liens
 symboliques `page:<clé>` et des marqueurs `{{spec:docs/contrats/<fichier>}}` / `{{date_synchro}}`. Ce script :
@@ -73,7 +73,7 @@ def strip_code(text):
 
 def cmd_sources(p, plugin):
     h = hashlib.sha256()
-    for f in source_files(p) + [os.path.join(plugin, 'agents', 'mise-en-page.md'), os.path.join(plugin, 'templates', 'confluence-arborescence.md')]:
+    for f in source_files(p) + [os.path.join(plugin, 'agents', 'layout.md'), os.path.join(plugin, 'templates', 'confluence-tree.md')]:
         if os.path.isfile(f):
             h.update(f.encode()); h.update(open(f, 'rb').read())
     print(h.hexdigest())
@@ -298,7 +298,7 @@ def cmd_rendre(p, config):
             if not os.path.isfile(dg['png']) or os.path.getmtime(dg['png']) < os.path.getmtime(dg['mmd'])]
     base = mmdc_cmd()
     if todo and not base:
-        print('MMDC ABSENT : diagrammes non rendus (proposer /doctor)'); return 1
+        print('MMDC ABSENT : diagrammes non rendus (proposer /install)'); return 1
 
     def run(dg):
         r = subprocess.run(base + ['-i', dg['mmd'], '-o', dg['png'], '-b', 'white', '-s', '2', '-p', config], capture_output=True, text=True)

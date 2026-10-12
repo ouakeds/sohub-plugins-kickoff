@@ -19,7 +19,7 @@ import re
 import sys
 from datetime import datetime
 
-PLUGIN = "sohub-plugins-kickoff:"
+PLUGIN = "sohub-plugins-spec:"
 PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Tarifs API Anthropic en $ par million de tokens : (entrée, sortie, cache lu).
@@ -295,7 +295,7 @@ def hook_subagent(hook):
     description = meta.get("description") or ""
     agent = agent_type[len(PLUGIN):]
     mode, etape = parse_task(description, prompt)
-    if agent == "evaluateur":
+    if agent == "evaluator":
         mode = "EVAL"
     start, end = parse_ts(stamps[0]), parse_ts(stamps[-1])
     record = {

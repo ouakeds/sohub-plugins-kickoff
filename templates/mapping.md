@@ -4,7 +4,7 @@ commit: <branche> / <sha court>
 maj: AAAA-MM-JJ HH:MM
 structure: proposée
 ---
-<!-- Gabarit de la cartographie d'un projet existant (<dépôt>/.sohub-plugin/reverse/cartographie.md), écrite par l'agent `recherche` en mode CARTOGRAPHIE, qui consolide les trois explorations parallèles (`.sohub-plugin/reverse/exploration/`). Les commentaires HTML sont des consignes : ne pas les recopier.
+<!-- Gabarit de la cartographie d'un projet existant (<dépôt>/.sohub-plugin/reverse/cartographie.md), écrite par l'agent `researcher` en mode CARTOGRAPHIE, qui consolide les trois explorations parallèles (`.sohub-plugin/reverse/exploration/`). Les commentaires HTML sont des consignes : ne pas les recopier.
 Règles :
 - C'est un INDEX, pas une recopie : il attribue les identifiants, rattache les éléments aux composants et liste ce qu'il faut trancher. Le détail (rôles, relations, sens des termes, versions…) reste dans les fichiers d'exploration, que la rédaction lit directement. Viser 8 Ko au maximum.
 - Une ligne par élément, une preuve `chemin/fichier.ext:ligne` (relative au dépôt) et la source dans les explorations (`S` = structure.md, `U` = usages.md, `D` = donnees.md). Pas de preuve → l'élément va dans « Zones d'incertitude ».

@@ -27,7 +27,7 @@ flowchart LR
 
 ## 2. Composants
 
-<!-- Un composant = un ensemble cohérent de responsabilités, identifiable dans le code (dossiers ou fichiers) ; viser 4 à 12 composants. Une ligne par composant, même tableau pour un cadrage neuf (/kickoff) et pour un projet existant (/reverse). Cadrage neuf : l'emplacement est celui prévu par la structure du code (§ 7). Projet existant : emplacement constaté, avec sa preuve. Les entités (§ 3), flux (§ 4) et contrats (§ 5.2) ne sont pas décrits ici : on y renvoie par leur identifiant. Un paragraphe d'introduction de 3 phrases au plus peut précéder le tableau (comment le code est découpé). -->
+<!-- Un composant = un ensemble cohérent de responsabilités, identifiable dans le code (dossiers ou fichiers) ; viser 4 à 12 composants. Une ligne par composant, même tableau pour un cadrage neuf (/create-project) et pour un projet existant (/reverse). Cadrage neuf : l'emplacement est celui prévu par la structure du code (§ 7). Projet existant : emplacement constaté, avec sa preuve. Les entités (§ 3), flux (§ 4) et contrats (§ 5.2) ne sont pas décrits ici : on y renvoie par leur identifiant. Un paragraphe d'introduction de 3 phrases au plus peut précéder le tableau (comment le code est découpé). -->
 
 | ID | Composant | Rôle (1 à 2 phrases) | Emplacement | Dépend de | Besoins PRD | Points d'attention |
 |----|-----------|----------------------|-------------|-----------|-------------|--------------------|

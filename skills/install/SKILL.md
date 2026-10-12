@@ -1,6 +1,6 @@
 ---
-name: doctor
-description: Vérifie les dépendances du plugin de cadrage (python3 et PyYAML, curl, unzip, Node.js, mermaid-cli et son navigateur headless, linters OpenAPI / AsyncAPI, uv et Code Review Graph, connecteur Atlassian) et installe celles qui manquent, avec l'accord de l'utilisateur. Proposé par /sync quand le rendu des diagrammes est impossible, par /reverse quand Code Review Graph manque, par /openapi quand le linter manque, ou lancé à la main. À utiliser quand l'utilisateur veut vérifier ou installer les dépendances du plugin.
+name: install
+description: Vérifie les dépendances du plugin de cadrage (python3 et PyYAML, curl, unzip, Node.js, mermaid-cli et son navigateur headless, linters OpenAPI / AsyncAPI, uv et Code Review Graph, connecteur Atlassian) et installe celles qui manquent, avec l'accord de l'utilisateur. Proposé par /confluence-sync quand le rendu des diagrammes est impossible, par /reverse quand Code Review Graph manque, par /openapi quand le linter manque, ou lancé à la main. À utiliser quand l'utilisateur veut vérifier ou installer les dépendances du plugin.
 argument-hint: ""
 allowed-tools: AskUserQuestion, Bash, Read, ToolSearch
 ---
@@ -22,9 +22,9 @@ Configuration de rendu : `${CLAUDE_SKILL_DIR}/puppeteer-config.json`
 
 | Dépendance | Sert à | Vérification | Obligatoire |
 |---|---|---|---|
-| `python3` | hooks de métriques, `/compare`, script de `/sync` | `python3 --version` | oui |
+| `python3` | hooks de métriques, `/compare`, script de `/confluence-sync` | `python3 --version` | oui |
 | PyYAML (module Python `yaml`) | lecture des spécifications de `docs/contrats/` (`/openapi`) | `python3 -c "import yaml; print(yaml.__version__)"` | pour les contrats (contournable par `npx js-yaml`) |
-| `curl` | dépôt des images et des spécifications sur Confluence (`/sync`), téléchargements | `curl --version` | pour la synchro |
+| `curl` | dépôt des images et des spécifications sur Confluence (`/confluence-sync`), téléchargements | `curl --version` | pour la synchro |
 | `unzip` (Linux) | extraction du navigateur par puppeteer | `unzip -v` | pour les diagrammes (contournable, voir 3) |
 | Node.js ≥ 18 et `npm` | exécuter mermaid-cli | `node --version`, `npm --version` | pour les diagrammes |
 | `mmdc` (`@mermaid-js/mermaid-cli`) | rendu des diagrammes Mermaid en PNG | `mmdc --version` | pour les diagrammes |
@@ -33,7 +33,7 @@ Configuration de rendu : `${CLAUDE_SKILL_DIR}/puppeteer-config.json`
 | `redocly` (`@redocly/cli`) et `asyncapi` (`@asyncapi/cli`) | validation des spécifications OpenAPI et AsyncAPI (`/openapi`) | `redocly --version`, `asyncapi --version` (ou `npx --yes @redocly/cli --version`) | pour `/openapi` (sinon spécifications non validées) |
 | `uv` | installer Code Review Graph | `uv --version` | pour `/reverse` |
 | `code-review-graph` (avec l'extra `communities`) | cartographie du code d'un projet existant | `code-review-graph --version` | pour `/reverse` |
-| connecteur Atlassian (MCP) | `/sync` | présence d'outils Atlassian (`ToolSearch` « atlassian confluence ») | pour la synchro |
+| connecteur Atlassian (MCP) | `/confluence-sync` | présence d'outils Atlassian (`ToolSearch` « atlassian confluence ») | pour la synchro |
 
 ## Procédure
 
@@ -67,4 +67,6 @@ Configuration de rendu : `${CLAUDE_SKILL_DIR}/puppeteer-config.json`
 
    Une bibliothèque absente du tableau : cherche son paquet avec `apt-file search <bibliothèque>` s'il est disponible, sinon donne son nom à l'utilisateur. Après l'installation, relance `ldd` jusqu'à ce que la liste soit vide.
 5. **Rendu de test** (si `mmdc` répond) : dans un dossier temporaire (`mktemp -d`), écris `graph LR; A-->B` dans `test.mmd`, puis lance `source ~/.nvm/nvm.sh && mmdc -i test.mmd -o test.png -b white -s 2 -p <configuration de rendu>` et vérifie que `test.png` existe et n'est pas vide. Si le rendu échoue : « Could not find Chrome » → navigateur (étape 3) ; « error while loading shared libraries » → bibliothèques (étape 4) ; puis relance le rendu de test. Supprime le dossier temporaire à la fin.
-6. **Bilan** : un tableau dépendance → état (`OK` + version, `installé`, `manquant`, `passé`) et, pour chaque manque, ce qu'il empêche (ex. « diagrammes publiés en bloc de code par /sync »), avec la commande exacte qui reste à lancer. Si uv a été installé et que `~/.local/bin` n'est pas dans le `PATH`, indique la ligne à ajouter au profil du shell. Si nvm a été installé, rappelle qu'un nouveau terminal (ou `source ~/.nvm/nvm.sh`) est nécessaire pour que `node` et `mmdc` soient trouvés en dehors de cette session.
+6. **Bilan** : un tableau dépendance → état (`OK` + version, `installé`, `manquant`, `passé`) et, pour chaque manque, ce qu'il empêche (ex. « diagrammes publiés en bloc de code par /confluence-sync »), avec la commande exacte qui reste à lancer. Si uv a été installé et que `~/.local/bin` n'est pas dans le `PATH`, indique la ligne à ajouter au profil du shell. Si nvm a été installé, rappelle qu'un nouveau terminal (ou `source ~/.nvm/nvm.sh`) est nécessaire pour que `node` et `mmdc` soient trouvés en dehors de cette session.
+
+**Langue** : adresse-toi à l'utilisateur (questions, options, résumés, comptes rendus) dans la langue qu'il emploie.

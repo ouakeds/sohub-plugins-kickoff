@@ -140,7 +140,7 @@ Un thème explicitement sans objet s'écrit avec la valeur « Aucun ». Un thèm
 
 ## 11. Glossaire
 
-<!-- Le vocabulaire du projet est tenu dans un document unique, docs/glossaire.md (gabarit glossaire.md) : chaque terme métier utilisé ici y est défini. Ne pas recopier de définition dans le PRD. -->
+<!-- Le vocabulaire du projet est tenu dans un document unique, docs/glossaire.md (gabarit glossary.md) : chaque terme métier utilisé ici y est défini. Ne pas recopier de définition dans le PRD. -->
 
 Voir [Glossaire](glossaire.md).
 
