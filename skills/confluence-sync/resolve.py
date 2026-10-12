@@ -54,7 +54,11 @@ _CTX = lambda i: rf'[(\[]{i}[,)\]]|\b{i}\s*:(?!//)'
 PROCESS = [(r'§', '« § »'), (r'(?m)^#{1,6}\s+' + _NUM, 'titre numéroté'),
            (r'<h[1-6][^>]*>\s*' + _NUM, 'titre numéroté'), (_CTX(r'I-\d{2}'), 'identifiant de processus I-xx'),
            (_CTX(r'S[1-9]'), 'identifiant de processus Sx'), (r'structure validée', '« structure validée »'),
-           (r'https?://[^\s)"]*atlassian\.net', 'URL Confluence écrite en dur')]
+           (r'https?://[^\s)"]*atlassian\.net', 'URL Confluence écrite en dur'),
+           # documentation minimale : ni preuve du code, ni chemin de fichier source
+           (r'\(\s*déduit\s*:', 'preuve du code « déduit : »'), (r'diffère du code actuel', 'preuve « diffère du code actuel »'),
+           (r'(?m)^\W*(?:<sub>)?\s*Sources\s*:', 'ligne « Sources : » de preuves'), (r'\bFichier\s*:', '« Fichier : » (chemin source)'),
+           (r'\b[\w.-]+/[\w./-]*\.[A-Za-z]{1,5}:\d+\b', 'référence fichier:ligne')]
 LINK = re.compile(r'(?<=\]\()page:([\w.-]+)|(?<=href=")page:([\w.-]+)')
 IDS = re.compile(r'\b(?:CU|EF|RG|ENF|EC|CMP|FL|CTR|CH|QA|Q|OBJ|CT)-\d+\b')
 STATUTS = {'brouillon': ('Brouillon', '#FF8B00'), 'proposé': ('Proposé', '#0065FF'), 'validé': ('Validé', '#36B37E'),

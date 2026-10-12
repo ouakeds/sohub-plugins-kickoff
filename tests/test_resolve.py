@@ -245,6 +245,19 @@ class TestProcessPatterns(unittest.TestCase):
                   '<h2>2024 en bref</h2>', 'Clé I-03X sans contexte', 'Le modèle S3 Glacier'):
             self.assertEqual(self.labels(t), [], t)
 
+    def test_minimal_doc_detected(self):
+        for t, label in (('Le minuteur démarre *(déduit : src/timer.ts:12)*', 'déduit'),
+                         ('Cible *(diffère du code actuel : src/a.py:3)*', 'diffère'),
+                         ('<sub>Sources : src/a.py:3, src/b.py:9</sub>', 'Sources'),
+                         ('Statut : Validé · Mis à jour : 2026-10-12 · Fichier : docs/prd.md', 'Fichier'),
+                         ('| CMP-01 | Comptes | app/accounts/models.py:40 |', 'fichier:ligne')):
+            self.assertTrue(any(label in l for l in self.labels(t)), t)
+
+    def test_minimal_doc_no_false_positive(self):
+        for t in ('Appel sur http://localhost:3000/api', 'Base https://api.example.com:443/v1', 'Réunion à 10:30',
+                  '<p>Spécification : fichier joint <code>api.openapi.yaml</code></p>', 'Version 1.2:3 du schéma'):
+            self.assertEqual(self.labels(t), [], t)
+
     def test_process_contexts_detected(self):
         for t, label in (('S1 : cadrage', 'Sx'), ('validé en (S2).', 'Sx'), ('voir [S3]', 'Sx'), ('(S1, S2)', 'Sx'),
                          ('I-03 : question', 'I-xx'), ('(I-12)', 'I-xx'), ('[I-04]', 'I-xx'),

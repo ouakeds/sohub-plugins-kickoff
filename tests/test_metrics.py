@@ -291,6 +291,7 @@ class TestTaskParsing(unittest.TestCase):
             "Cadrage RÉDACTION — TICKET TK-001": ("RÉDACTION", "TICKET"),
             "Eval — TICKET PROJ-12": ("EVAL", "TICKET"),
             "Recherche RÉTRO — ARCHITECTURE": ("RÉTRO", "ARCHITECTURE"),
+            "Cadrage STACK — PRD": ("STACK", "PRD"),
         }
         for title, expected in cases.items():
             self.assertEqual(metrics.parse_task(title, ""), expected, title)

@@ -29,7 +29,7 @@ Configuration de rendu : `${CLAUDE_SKILL_DIR}/puppeteer-config.json`
 | `curl` | dépôt des images et des spécifications sur Confluence (`/confluence-sync`), téléchargements | `curl --version` | pour la synchro |
 | `unzip` (Linux) | extraction du navigateur par puppeteer | `unzip -v` | pour les diagrammes (contournable, voir 3) |
 | Node.js ≥ 18 et `npm` (Linux sous WSL) | exécuter mermaid-cli | `command -v node npm npx` (aucun chemin sous `/mnt/`), puis `node --version`, `npm --version` | pour les diagrammes |
-| `mmdc` (`@mermaid-js/mermaid-cli`) | rendu des diagrammes Mermaid en PNG | `command -v mmdc` (pas sous `/mnt/`), puis `mmdc --version` | pour les diagrammes |
+| `mmdc` (`@mermaid-js/mermaid-cli`) | rendu des diagrammes Mermaid en PNG (`/confluence-sync`, aperçu de `/create-diagram`) | `command -v mmdc` (pas sous `/mnt/`), puis `mmdc --version` | pour les diagrammes |
 | navigateur headless de mermaid-cli (`chrome-headless-shell`, version attendue par mermaid-cli) | rendu effectif | exécutable présent dans `~/.cache/puppeteer/chrome-headless-shell/linux-<version>/chrome-headless-shell-linux64/`, puis rendu de test (voir 4) | pour les diagrammes |
 | bibliothèques système du navigateur (Linux) | lancer le navigateur | `ldd <exécutable du navigateur> \| grep "not found"` vide | pour les diagrammes |
 | `redocly` (`@redocly/cli`) et `asyncapi` (`@asyncapi/cli`) | validation des spécifications OpenAPI et AsyncAPI (`/create-api-specs`) | `command -v redocly asyncapi` (pas sous `/mnt/`), puis `redocly --version`, `asyncapi --version` (ou `npx --yes @redocly/cli --version`, avec un `npx` Linux) | pour `/create-api-specs` (sinon spécifications non validées) |

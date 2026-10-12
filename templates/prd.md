@@ -37,6 +37,14 @@ Règles :
 |----|------------|---------------------------------|
 | CT-01 | | |
 
+### 3.1 Stack technique
+
+<!-- Tant que l'utilisateur n'a pas donné sa stack, la section contient la seule ligne « À fixer à la validation du PRD. » (pas de tableau) ; s'il l'impose pendant le cadrage, elle s'écrit ici comme ci-dessous. Fixée au plus tard à la validation du PRD (/validate-step) : choisie par l'utilisateur, ou proposée par l'agent puis choisie par l'utilisateur. Chaque brique est une contrainte imposée : identifiant CT-xx (numérotation commune avec le tableau ci-dessus), version majeure quand elle est connue (sinon « à préciser (architecture) »). Elle s'impose à l'architecture (§ 6) et aux ADR. Si l'utilisateur laisse l'architecture la proposer, une seule ligne : « Non imposée : proposée par l'architecture. » Projet rétro : « Constatée dans le code : voir l'architecture (choix techniques constatés). » -->
+
+| ID | Couche | Choix | Version | Raison donnée par l'utilisateur |
+|----|--------|-------|---------|---------------------------------|
+| CT-02 | <front, back, base de données, hébergement…> | | | |
+
 ## 4. Utilisateurs cibles
 
 <!-- Un bloc par type d'utilisateur. -->

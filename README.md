@@ -6,7 +6,7 @@
 
 *Plugin Claude Code de cadrage de projet : PRD, architecture, ADR, user stories, contrats OpenAPI et publication Confluence, pour que l'IA qui développera n'ait rien à deviner ni à inventer.*
 
-[![Version](https://img.shields.io/badge/version-0.16.0-blue)](.claude-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-0.17.0-blue)](.claude-plugin/plugin.json)
 [![Licence MIT](https://img.shields.io/badge/licence-MIT-green)](LICENSE)
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://docs.claude.com/en/docs/claude-code/plugins)
 [![Python 3](https://img.shields.io/badge/Python-3-3776AB?logo=python&logoColor=white)](#-stack--technos)
@@ -73,6 +73,7 @@ Puis, dans Claude Code :
 /install-deps                        # vérifie et installe les dépendances
 /create-project une app Pomodoro     # cadrer un projet neuf
 /reverse-engineer ./mon-depot        # documenter un projet existant
+/create-diagram le parcours de connexion   # construire un diagramme avec vous
 ```
 
 Pour développer le plugin, voir [Tester en local](#-tester-en-local).
@@ -85,17 +86,18 @@ Pour développer le plugin, voir [Tester en local](#-tester-en-local).
 | `/reverse-engineer [dépôt]` | Documente un projet existant. Construit (ou met à jour) le graphe du code avec Code Review Graph, en tire un digest (communautés, flux d'exécution, points d'entrée, dépendances, zones à risque), puis **trois agents de recherche explorent le code en parallèle** (un seul sous 50 fichiers ; Sonnet ; structure et composants ; usages, CU et glossaire ; données, contrats, contraintes et choix techniques ; le digest répartit les fichiers à lire entre eux) et un quatrième (Opus) consolide leurs résultats en une **cartographie**, un index court : identifiants des composants, cas d'utilisation, données, contrats, choix techniques constatés, glossaire, zones d'incertitude ; le détail reste dans les explorations. Après validation de cette structure par vos choix, **deux agents rédigent en parallèle** le PRD d'une part, architecture + glossaire d'autre part (composants en tableau, flux d'intégration, index des contrats), avec **exactement la même structure qu'un projet cadré avec `/create-project`**, en `brouillon`, chaque élément suivi de sa preuve `*(déduit : fichier:ligne)*` ; ce que le code ne dit pas devient question ouverte (10 au plus par document, les autres restent dans la cartographie). **Pas d'ADR ni de décision à trancher** : les décisions sont déjà prises ; les choix techniques constatés sont décrits dans l'architecture (§ 6), sans question sur leur raison. Un ADR ne naît ensuite, avec `/create-project`, que d'une nouvelle décision (changer un choix existant). **Pas d'eval** (les incohérences sont celles du code existant) : un script vérifie que chaque preuve `fichier:ligne` existe. Puis `/create-api-specs` pour les spécifications des API, `/create-project` pour affiner ou `/confluence-sync` pour publier. N'écrase jamais un document existant. |
 | `/create-api-specs [projet] [CTR-xx…]` | Produit ou met à jour les spécifications machine des contrats listés au § 5.2 de l'architecture, dans `docs/contrats/` : OpenAPI 3.1 (API HTTP exposée, et chaque API tierce appelée, limitée aux opérations utilisées), AsyncAPI 3.0 (événements, file de messages), JSON Schema (format de fichier). Extraites du code pour un projet existant (preuve `x-source` par opération), conçues d'après le PRD pour un cadrage neuf (`x-besoins`, propositions `x-propose`). Validées par `redocly` / `asyncapi` ; l'index du § 5.2 est mis à jour. Toutes les specs ont une URL de base absolue et des exemples de corps, pour être importées dans Postman telles quelles. |
 | `/review-specs [projet]` | Fait relire **les documents de spec** (PRD, architecture, ADR, glossaire, backlog et stories) par l'agent `evaluator`, qui liste tout ce qu'une IA de dev devrait deviner ou inventer : manques, contradictions, exigences invérifiables, traçabilité cassée. Résultat dans `docs/eval/`. Lancé automatiquement à la fin de chaque itération de `/create-project` et de `/create-ticket` ; à la main, il sert à relire de nouveau après une modification. |
-| `/confluence-sync [projet] [--refaire]` | Publie la documentation sur Confluence sous une page racine `<Projet>`. **Tout le dossier `docs/` est publié, et lui seul** (sauf `docs/eval/`) : ni le code, ni le backlog, ni aucun fichier hors de `docs/`. Un agent **`layout`** lit ces documents (PRD, architecture, glossaire, ADR, spécifications, et tout autre document de `docs/`) et l'arborescence cible du plugin (`templates/confluence-tree.md`) : page d'arrivée (présentation, sommaire, démarrage en local, variables d'environnement, structure du code, conventions, tests), Vue d'ensemble, Fonctionnel, Architecture découpée en Données, Flux, Interfaces (une page Contrat par spécification, spécification complète dans un bloc repliable) et Services externes, Décisions (ADR) — projet cadré seulement —, Points ouverts et dette, Glossaire. Il décide du contenu de chaque page (sélection, déplacement, fusion des doublons, nettoyage des traces du processus) sans rien inventer ni perdre d'identifiant. Le script `skills/confluence-sync/resolve.py` vérifie son rendu (aucun identifiant métier perdu, ni « § », ni titre numéroté, ni identifiant de processus), résout les liens entre pages et insère les spécifications depuis le disque, calcule les empreintes, prépare les lots et fusionne les résultats. La mise en page n'est refaite que si les sources ont changé (ou avec `--refaire`). Publication en deux temps : squelette des pages nouvelles et remise en ordre de l'arborescence, puis corps publiés **en parallèle** par des agents `publisher` (6 au maximum), avec le statut natif de chaque page. Diagrammes Mermaid rendus en PNG (mermaid-cli, en parallèle) et insérés en image avec leur source repliée ; chaque spécification est jointe à sa page Contrat (fichier téléchargeable). L'envoi des fichiers passe par `resolve.py upload`, qui contrôle chaque commande d'envoi (fichier de `docs/`, adresse du site, options) avant de l'exécuter ; il exige une règle de permission pour cette seule commande (voir `skills/confluence-sync/SKILL.md`). Le backlog et les stories restent dans le dépôt. Proposé à la fin du cadrage (validation du backlog). Nécessite le connecteur Atlassian, et mermaid-cli pour les images. |
+| `/confluence-sync [projet] [--refaire]` | Publie la documentation sur Confluence sous une page racine `<Projet>`. **Tout le dossier `docs/` est publié, et lui seul** (sauf `docs/eval/`) : ni le code, ni le backlog, ni aucun fichier hors de `docs/`. Un agent **`layout`** lit ces documents (PRD, architecture, glossaire, ADR, spécifications, et tout autre document de `docs/`) et l'arborescence cible du plugin (`templates/confluence-tree.md`) : page d'arrivée (présentation, sommaire, démarrage en local, variables d'environnement), Vue d'ensemble, Fonctionnel, Architecture découpée en Données, Flux (seulement les événements émis ou consommés : Kafka, files, webhooks), Interfaces (une page Contrat par spécification, spécification complète dans un bloc repliable) et Services externes, Diagrammes (`docs/diagrammes/`), Décisions (ADR) — projet cadré seulement —, Points ouverts et dette, Glossaire. **Documentation minimale** : ni preuve `fichier:ligne`, ni chemin de fichier, ni structure du code (ils restent dans `docs/`). Il décide du contenu de chaque page (sélection, déplacement, fusion des doublons, nettoyage des traces du processus) sans rien inventer ni perdre d'identifiant. Le script `skills/confluence-sync/resolve.py` vérifie son rendu (aucun identifiant métier perdu, ni « § », ni titre numéroté, ni identifiant de processus, ni preuve ou chemin de fichier), résout les liens entre pages et insère les spécifications depuis le disque, calcule les empreintes, prépare les lots et fusionne les résultats. La mise en page n'est refaite que si les sources ont changé (ou avec `--refaire`). Publication en deux temps : squelette des pages nouvelles et remise en ordre de l'arborescence, puis corps publiés **en parallèle** par des agents `publisher` (6 au maximum), avec le statut natif de chaque page. Diagrammes Mermaid rendus en PNG (mermaid-cli, en parallèle) et insérés en image avec leur source repliée ; chaque spécification est jointe à sa page Contrat (fichier téléchargeable). L'envoi des fichiers passe par `resolve.py upload`, qui contrôle chaque commande d'envoi (fichier de `docs/`, adresse du site, options) avant de l'exécuter ; il exige une règle de permission pour cette seule commande (voir `skills/confluence-sync/SKILL.md`). Le backlog et les stories restent dans le dépôt. Proposé à la fin du cadrage (validation du backlog). Nécessite le connecteur Atlassian, et mermaid-cli pour les images. |
 | `/install-deps` | Vérifie les dépendances (python3, PyYAML pour relire les specs de contrats, curl, unzip, Node.js, mermaid-cli, son navigateur headless et ses bibliothèques système, linters OpenAPI / AsyncAPI, uv et Code Review Graph, connecteur Atlassian) et installe celles qui manquent, avec votre accord. Proposé par `/confluence-sync` si le rendu des diagrammes est impossible, par `/reverse-engineer` si Code Review Graph manque, et par `/create-api-specs` si le linter manque. |
 | `/compare-runs [projets…]` | Compare **plusieurs runs du même cadrage** (ex. `pomodoro-v1`, `pomodoro-v2`, générés à partir de la même idée) sur la qualité (points d'ombre), le temps et le coût, à partir de leurs métriques. Sert à mesurer l'effet d'un changement du plugin. |
-| `/validate-step [projet]` | Valide **l'étape de cadrage en cours** : le document courant et passe à l'étape suivante (PRD → architecture → ADR → backlog), puis génère les documents suivants (architecture + ADR + index, puis backlog + stories) avec les propositions de l'agent, marquées *(proposé)* ; ils seront évalués à la fin du `/create-project` suivant. Avertit s'il reste des points bloquants, sans jamais bloquer. |
+| `/validate-step [projet]` | Valide **l'étape de cadrage en cours** : le document courant et passe à l'étape suivante (PRD → architecture → ADR → backlog), puis génère les documents suivants (architecture + ADR + index, puis backlog + stories). **À la validation du PRD**, fait d'abord fixer la **stack technique** (§ 3.1 du PRD) : l'agent en propose 2 ou 3 tirées du PRD, l'utilisateur en choisit une, donne la sienne ou laisse l'architecture la proposer ; elle s'impose ensuite à l'architecture et aux ADR. Les documents suivants sont générés avec les propositions de l'agent, marquées *(proposé)* ; ils seront évalués à la fin du `/create-project` suivant. Avertit s'il reste des points bloquants, sans jamais bloquer. |
 | `/create-ticket <description \| clé Jira> [chemins…]` | Cadre une **évolution** (feature ou bugfix) sur un projet déjà documenté (cadré avec `/create-project` ou rétro-documenté avec `/reverse-engineer`), en spec-driven. La demande vient d'une description libre ou d'un ticket Jira (lu avec le connecteur Atlassian, sans le modifier). Même boucle que `/create-project` : analyse d'impact par l'agent de cadrage (type feature / bug ; pour un bug, écart à la spec ou cas non spécifié ; documents et identifiants touchés) → vos choix → mise à jour **en place** des documents touchés (PRD, architecture, nouvel ADR si une décision est prise, glossaire) et création des US du ticket au statut `à cadrer` → eval du ticket → relancer / valider le ticket (US `à faire`, ADR `accepté`, ADR remplacé déclassé) / arrêter / abandonner (les documents reviennent à l'instantané pris au début du ticket, evals conservés ; l'abandon est tracé `ABANDON <ID>` et refusé si un autre ticket a écrit depuis). Une US existante touchée par le ticket repasse `à cadrer` jusqu'à la validation. |
+| `/create-diagram <besoin> [chemins…]` | Construit un **diagramme avec l'utilisateur** à partir de sa demande : choix du type (séquence, processus, états, données, classes, composants, planning, chronologie, carte mentale, parcours), questions seulement sur ce qui manque, aperçu PNG (mermaid-cli), corrections jusqu'à validation. Enregistré dans `docs/diagrammes/<nom>.md`, puis publié par `/confluence-sync` sur la page « Diagrammes ». Les documents du projet (PRD, architecture, glossaire) ne servent de contexte que si la demande le dit (« d'après l'architecture », « le flux du CU-03 »). `/create-diagram docs/diagrammes/<nom>.md` reprend un diagramme existant. |
 
 ## 🛠 Stack / technos
 
 | Domaine | Technologies | Où |
 |---|---|---|
-| **Plateforme** | [Claude Code](https://docs.claude.com/en/docs/claude-code) — plugin : 9 skills (slash commands), 5 agents, 2 hooks (`SubagentStop`, `Stop`), marketplace | `.claude-plugin/`, `skills/`, `agents/`, `hooks/` |
+| **Plateforme** | [Claude Code](https://docs.claude.com/en/docs/claude-code) — plugin : 10 skills (slash commands), 5 agents, 2 hooks (`SubagentStop`, `Stop`), marketplace | `.claude-plugin/`, `skills/`, `agents/`, `hooks/` |
 | **Modèles** | Claude Opus : cadrage (`scoping`), évaluation (`evaluator`), cartographie et rédaction rétro (`researcher`), mise en page Confluence (`layout`) · Claude Sonnet : explorations du code (`researcher`), publication (`publisher`) | `agents/` |
 | **Scripts** | Python 3 (bibliothèque standard) | `hooks/metrics.py` (métriques, coûts, comparaison de runs), `skills/reverse-engineer/graph_digest.py` (digest du graphe), `skills/reverse-engineer/check_refs.py` (vérification des preuves `fichier:ligne`), `skills/review-specs/check_tasks.py` (contrôle des plans de tâches), `skills/confluence-sync/resolve.py` (contrôle du rendu, liens, empreintes, lots) |
 | **Analyse de code** | [Code Review Graph](https://github.com/tirth8205/code-review-graph) (installé avec `uv`) | `/reverse-engineer` |
@@ -118,6 +120,7 @@ Les documents existants passés en argument (sources) sont mémorisés dans le c
   adr/index.md         # Index des décisions
   adr/NNNN-*.md        # Une décision par fichier
   glossaire.md         # Vocabulaire du projet
+  diagrammes/*.md      # Diagrammes Mermaid construits avec /create-diagram (publiés sur la page « Diagrammes »)
   eval/AAAA-MM-JJ-HHMMSS.md  # Une passe d'évaluation par fichier (historique)
 <projet>/.sohub-plugin/
   backlog.md           # User stories, priorités, dépendances et statut de dev de chaque US
@@ -131,6 +134,7 @@ Les documents existants passés en argument (sources) sont mémorisés dans le c
   reverse/cartographie.md  # Projet existant : structure de documentation proposée puis validée
   reverse/preuves.md   # Projet existant : vérification des références fichier:ligne
   sync/                # Fichiers de travail de /confluence-sync (corps de page, lots, résultats)
+  diagrammes/          # Aperçus de /create-diagram (.mmd, .png), jamais publiés
 <projet>/.code-review-graph/  # Base du graphe (Code Review Graph, ignoré par git)
 ```
 
@@ -163,14 +167,14 @@ Pour comparer la qualité, le temps et le coût, génère le même projet dans p
 **Agent de cadrage.** C'est un product owner sceptique, qui adopte le point de vue du client et de l'utilisateur final. Il traque les besoins réels, pas les fonctionnalités supposées : tout besoin non justifié est écarté tant qu'il n'a pas prouvé un vrai usage (à qui sert la fonctionnalité, dans quel usage concret). Il pose des questions ciblées et groupées, saute celles dont la réponse est connue, reformule pour vérifier, pointe les contradictions, et n'invente jamais une réponse à la place de l'utilisateur.
 
 **La boucle.**
-1. Avec `/create-project`, l'agent cadre la demande, l'utilisateur tranche, et le document de l'étape courante est rédigé ou affiné.
+1. Avec `/create-project`, l'agent cadre la demande, l'utilisateur tranche, et le document de l'étape courante est rédigé ou affiné. Chaque question accepte une réponse libre quand aucune option ne convient, et la série de questions se termine toujours par « Autre chose à dire, ou à recadrer ? » : un texte libre, transmis mot pour mot et tracé `RECADRAGE` au journal, qui complète les décisions ou réoriente l'analyse (relancée si les questions deviennent caduques). Même chose pour `/create-ticket`.
 2. L'eval se lance automatiquement en fin d'itération. C'est un regard à part : on produit, puis on audite. L'eval porte sur tous les documents qui existent déjà, et l'absence d'un document attendu est elle-même un point d'ombre.
 3. L'utilisateur choisit alors entre trois suites :
    - **relancer** : une nouvelle itération part des points d'ombre du dernier eval ;
    - **valider** (`/validate-step`) : on passe à l'étape suivante, avec un simple avertissement s'il reste des points bloquants ;
    - **arrêter** : les documents restent en l'état, et l'on reprend plus tard.
 
-**Ordre de génération.** On écrit d'abord le PRD, puis l'architecture, puis les ADR, puis le backlog d'US. Chaque décision d'architecture, chaque ADR et chaque US répond à un besoin écrit dans le PRD. Rien n'est jamais bloqué automatiquement : c'est toujours l'humain qui décide quand passer à l'étape suivante.
+**Ordre de génération.** On écrit d'abord le PRD (dont la stack technique, fixée à sa validation), puis l'architecture, puis les ADR, puis le backlog d'US. Chaque décision d'architecture, chaque ADR et chaque US répond à un besoin écrit dans le PRD. Rien n'est jamais bloqué automatiquement : c'est toujours l'humain qui décide quand passer à l'étape suivante.
 
 **Backlog d'US** (inspiré de spec-kit et BMAD) :
 - Le découpage est vertical : une US apporte une valeur utilisateur testable de bout en bout. Les US P1 forment le MVP et couvrent tous les EF V1.
@@ -279,8 +283,14 @@ sequenceDiagram
     opt Bug
         O->>U: qualification : écart à la spec / cas non spécifié
     end
-    O->>U: points bloquants, puis zones de flou (4 questions par appel)
-    U-->>O: décisions, ou « non tranché »
+    O->>U: points bloquants, puis zones de flou (4 questions par appel, réponse libre possible)
+    U-->>O: décisions, réponses libres, ou « non tranché »
+    O->>U: Autre chose à dire, ou à recadrer ?
+    opt Recadrage qui rend les questions caduques
+        U-->>O: texte libre (RECADRAGE)
+        O->>S: ANALYSE relancée avec le recadrage
+        S-->>O: nouveaux points, présentés de la même façon
+    end
     O->>S: RÉDACTION — TICKET (décisions + contenu accepté, impact confirmé)
     alt Feature
         S->>D: PRD (CU, EF, RG, ENF), architecture, ADR « proposé », glossaire
@@ -392,6 +402,7 @@ skills/install-deps/       # Diagnostic et installation des dépendances (mermai
 skills/reverse-engineer/   # Rétro-documentation d'un projet existant (+ graph_digest.py, check_refs.py)
 skills/create-api-specs/   # Spécifications OpenAPI / AsyncAPI / JSON Schema des contrats
 skills/compare-runs/       # Comparaison de runs (qualité, temps, coût)
+skills/create-diagram/     # Construction d'un diagramme Mermaid avec l'utilisateur, enregistré dans docs/diagrammes/
 agents/scoping.md          # Agent de cadrage : product owner sceptique (analyse, rédaction, proposition)
 agents/evaluator.md        # Auditeur : liste les points d'ombre dans docs/eval/
 agents/researcher.md       # Agent de recherche : explore, cartographie un projet existant et rédige sa documentation

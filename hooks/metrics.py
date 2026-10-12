@@ -328,13 +328,13 @@ def parse_task(description, prompt):
     """Mode et étape à partir du titre imposé par les skills (« Cadrage ANALYSE — PRD », « Eval — PRD »,
     « Recherche EXPLORATION — USAGES », « Recherche CARTOGRAPHIE — REVERSE », « Recherche RÉTRO — PRD », « Cadrage ANALYSE — TICKET TK-001 »)."""
     mode, etape = None, None
-    match = re.match(r"\s*(?:(?:Cadrage|Recherche)\s+)?(ANALYSE|RÉDACTION|REDACTION|PROPOSITION|IMPORT|EXPLORATION|CARTOGRAPHIE|RÉTRO|RETRO|Eval)"
+    match = re.match(r"\s*(?:(?:Cadrage|Recherche)\s+)?(ANALYSE|RÉDACTION|REDACTION|PROPOSITION|IMPORT|STACK|EXPLORATION|CARTOGRAPHIE|RÉTRO|RETRO|Eval)"
                      r"\b\s*[—-]\s*(?:après\s+)?(\w+)", description or "", re.I)
     if match:
         mode = match.group(1).upper().replace("REDACTION", "RÉDACTION").replace("RETRO", "RÉTRO")
         etape = match.group(2).upper()
     if not mode:
-        match = re.search(r"Mode\s*:?\s*`?(ANALYSE|RÉDACTION|PROPOSITION|IMPORT|EXPLORATION|CARTOGRAPHIE|RÉTRO)", prompt)
+        match = re.search(r"Mode\s*:?\s*`?(ANALYSE|RÉDACTION|PROPOSITION|IMPORT|STACK|EXPLORATION|CARTOGRAPHIE|RÉTRO)", prompt)
         mode = match.group(1) if match else None
     if not etape:
         match = re.search(r"Étape[^:\n]*:\s*(PRD|ARCHITECTURE|ADR|BACKLOG|TICKET)", prompt)
