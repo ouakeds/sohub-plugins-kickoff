@@ -48,7 +48,7 @@ Les chemins `docs/` et `.sohub-plugin/` du projet te sont fournis par l'orchestr
 
 L'orchestrateur te fournit le chemin du gabarit `eval.md`. Lis-le et respecte sa structure exacte. Ses commentaires HTML sont des consignes : suis-les, ne les recopie pas. Une section vide s'écrit « Aucun ».
 
-Lis le fichier d'eval précédent le plus récent de `docs/eval/` s'il existe :
+Lis l'**eval précédent** s'il existe. Les noms de fichiers sont `AAAA-MM-JJ-HHMMSS` (suffixe `-2`… en cas de collision) : le plus récent est celui dont le nom sans `.md` est le plus grand. Pour un ticket (`TICKET <ID>`), l'eval précédent est le plus récent de même `etape`, à défaut le plus récent tout court ; sinon, c'est le plus récent dont l'`etape` n'est pas un ticket. Puis :
 - un point toujours présent **garde son identifiant** `E-xxx` ;
 - un point qui n'a plus lieu d'être est listé dans « Points levés » (avec l'endroit où la réponse est maintenant écrite) ;
 - un nouveau point prend le numéro suivant le plus grand identifiant jamais attribué (consulte tout l'historique de `docs/eval/` au besoin) ; un identifiant n'est jamais réutilisé.

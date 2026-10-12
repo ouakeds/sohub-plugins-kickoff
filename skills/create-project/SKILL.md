@@ -21,7 +21,11 @@ Pour trouver `<projet>` :
 1. si `$ARGUMENTS` contient le chemin d'un dossier de projet existant (qui contient `docs/prd.md`), utilise-le ;
 2. sinon, si `docs/prd.md` existe dans le répertoire courant, le projet est le répertoire courant ;
 3. sinon, cherche les `*/docs/prd.md` dans les sous-dossiers directs : un seul → c'est le projet ; plusieurs → demande lequel via `AskUserQuestion` ;
-4. sinon, ou si l'utilisateur décrit une **nouvelle** idée alors que des projets existent (demande-lui s'il s'agit d'un nouveau projet ou de l'un d'eux), crée un nouveau projet : propose via `AskUserQuestion` un nom de dossier court en kebab-case tiré de l'idée ou, à défaut, du contenu des sources (ex. `pomodoro`), l'utilisateur peut en saisir un autre via « Other ». Crée `<répertoire courant>/<nom>/docs/` avec `mkdir -p`. Le dossier ne doit pas déjà exister.
+4. sinon, crée un nouveau projet (voir ci-dessous).
+
+**Idée et projets existants** : si `$ARGUMENTS` contient une idée (texte qui n'est pas qu'une précision sur l'étape en cours) et qu'un projet a été trouvé aux règles 2 ou 3, demande **toujours** d'abord via `AskUserQuestion` : « Nouveau projet » / « Préciser <projet> » (un choix par projet trouvé, 3 au plus ; au-delà, l'utilisateur donne le chemin via « Other »). « Nouveau projet » → création ci-dessous, dans le répertoire courant, jamais à l'intérieur d'un projet existant (si le répertoire courant est lui-même un projet, crée le nouveau dossier à côté, dans son dossier parent, après confirmation).
+
+**Création** : propose via `AskUserQuestion` un nom de dossier court en kebab-case tiré de l'idée ou, à défaut, du contenu des sources (ex. `pomodoro`), l'utilisateur peut en saisir un autre via « Other ». Crée `<répertoire courant>/<nom>/docs/` avec `mkdir -p`. Si le dossier existe déjà, dis-le et propose un autre nom.
 
 Rappelle à l'utilisateur, au début de l'itération, le dossier du projet utilisé.
 
@@ -30,7 +34,7 @@ Rappelle à l'utilisateur, au début de l'itération, le dossier du projet utili
 - `docs/prd.md`, `docs/architecture.md`, `docs/adr/index.md` + `docs/adr/NNNN-*.md`
 - `.sohub-plugin/backlog.md` + `.sohub-plugin/stories/US-NNN-*.md` (à la racine du projet, pas dans `docs/`) : backlog des user stories ; le tableau du backlog porte le statut de développement de chaque US.
 - `docs/glossaire.md` : vocabulaire propre au projet, source unique des définitions ; document **transverse**, sans `statut`, complété à toutes les étapes par l'agent `scoping` ; il n'entre pas dans le calcul de l'étape courante.
-- `docs/eval/AAAA-MM-JJ-HHMM.md` : un fichier par passe d'eval ; le plus récent (plus grand nom) donne l'état actuel.
+- `docs/eval/AAAA-MM-JJ-HHMMSS.md` : un fichier par passe d'eval. **Dernier eval d'une étape** : parmi les fichiers de `docs/eval/` dont le champ `etape` vaut cette étape, celui dont le nom sans `.md` est le plus grand (noms `AAAA-MM-JJ-HHMMSS`, suffixe `-2`, `-3`… en cas de collision : cet ordre est chronologique).
 
 Il n'y a **pas** de fichier d'état. L'état se relit dans le champ `statut` (`brouillon` ou `validé`) en tête des documents :
 
@@ -58,6 +62,7 @@ Il n'y a **pas** de fichier d'état. L'état se relit dans le champ `statut` (`b
    - le chemin absolu de `<projet>/docs/` et celui de `<projet>/.sohub-plugin/` ;
    - le chemin des gabarits ;
    - la date-heure ;
+   - à la création du PRD : l'idée de départ (texte exact) et la reformulation telle que l'utilisateur l'a confirmée ou corrigée ;
    - la liste des décisions **telles que l'utilisateur les a formulées**, avec les identifiants des points (B1, F2…) et leur origine (E-xxx, Q-xx…) ;
    - les points non tranchés ;
    - les chemins des nouvelles sources éventuelles, à ajouter au champ `sources:` du PRD.

@@ -8,7 +8,7 @@ vérifie le tableau « Plan de tâches » de chacune : colonnes, identifiants, d
 vers des vagues antérieures), fichiers écrits deux fois dans une même vague, CA de la story sans tâche,
 sous-tâches sur un seul niveau, statuts connus. Recoupe ensuite les lots de « Parallélisation des US » du
 backlog (fichiers écrits par deux US d'un même lot, US dépendantes dans un même lot). Écrit le détail dans
-<projet>/.sohub-plugin/tasks.md et affiche une ligne de résumé. Ne bloque jamais (code de sortie 0).
+<projet>/.sohub-plugin/tasks.md (tasks-<ID>.md avec --ticket) et affiche une ligne de résumé. Ne bloque jamais (code de sortie 0).
 """
 import glob
 import os
@@ -233,12 +233,13 @@ def main():
         out.append("## Parallélisation des US (backlog)")
         out.extend([f"- {p}" for p in lots] or ["- OK"])
         out.append("")
-    dest = os.path.join(projet, ".sohub-plugin", "tasks.md")
+    nom = f"tasks-{re.sub(r'[^A-Za-z0-9_.-]', '_', ticket)}.md" if ticket else "tasks.md"
+    dest = os.path.join(projet, ".sohub-plugin", nom)
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     with open(dest, "w", encoding="utf-8") as f:
         f.write("\n".join(out))
     print(f"Plans de tâches ({portee}) : {len(resultats)} stories, {n} anomalie(s)"
-          + " — détail dans .sohub-plugin/tasks.md.")
+          + f" — détail dans .sohub-plugin/{nom}.")
 
 
 if __name__ == "__main__":

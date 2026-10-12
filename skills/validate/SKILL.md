@@ -25,14 +25,14 @@ Pour trouver `<projet>` :
 - `.sohub-plugin/backlog.md` (à la racine du projet) : même champs `statut` et `maj` ; son tableau porte en plus le statut de développement de chaque US (`à faire`, `en cours`…), qui n'est **pas** le statut de l'étape. Les stories sont dans `.sohub-plugin/stories/`.
 - `docs/glossaire.md` : document transverse, sans `statut` ; il ne compte pas dans le calcul de l'étape et n'est jamais validé.
 - `docs/adr/NNNN-*.md` : chaque ADR porte un champ `statut` (`proposé`, `accepté`, `rejeté`, `remplacé par ADR-XXXX`, `déprécié`).
-- `docs/eval/AAAA-MM-JJ-HHMM.md` : le plus récent (plus grand nom) donne l'état actuel ; son frontmatter contient `bloquants_document_courant`.
+- `docs/eval/AAAA-MM-JJ-HHMMSS.md` : un fichier par passe d'eval ; son frontmatter contient `etape` et `bloquants_document_courant`. **Dernier eval d'une étape** : parmi les fichiers de `docs/eval/` dont le champ `etape` vaut cette étape, celui dont le nom sans `.md` est le plus grand (noms `AAAA-MM-JJ-HHMMSS`, suffixe `-2`, `-3`… en cas de collision : cet ordre est chronologique).
 
 **Étape courante** = le premier document, dans l'ordre PRD → ARCHITECTURE → ADR (`docs/adr/index.md`) → BACKLOG (`.sohub-plugin/backlog.md`), qui n'existe pas ou n'est pas `validé`.
 
 ## Procédure
 
 1. Détermine le dossier du projet, puis l'étape courante. Si le cadrage est déjà entièrement validé, dis-le et arrête-toi. Si le document de l'étape n'existe pas : si l'étape précédente est validée (génération jamais faite ou interrompue), passe directement à l'étape 5 comme si elle venait d'être validée ; si c'est le PRD, dis-le, propose de lancer `/create-project` et arrête-toi.
-2. Lis le dernier fichier de `docs/eval/`.
+2. Lis le dernier eval de l'étape courante (les evals de tickets, `etape: TICKET …`, ne comptent pas).
    - S'il n'y en a pas, ou si son horodatage (nom du fichier) est antérieur au champ `maj` du document courant, signale que l'eval n'est pas à jour (et que `/eval` permet de le relancer).
    - Si `bloquants_document_courant` est supérieur à 0, **avertis** l'utilisateur en listant ces points (identifiant E-xxx + titre).
    - Si le document courant contient encore des questions ouvertes marquées bloquantes, **avertis** aussi en les listant.

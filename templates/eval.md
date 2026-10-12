@@ -1,11 +1,11 @@
 ---
 etape: PRD | ARCHITECTURE | ADR | BACKLOG | TICKET <ID>
-eval_precedent: <!-- AAAA-MM-JJ-HHMM ou aucun -->
+eval_precedent: <!-- AAAA-MM-JJ-HHMMSS ou aucun -->
 points_ouverts: <N>
 bloquants: <B>
 bloquants_document_courant: <BC>
 ---
-<!-- Gabarit d'une passe d'évaluation (docs/eval/AAAA-MM-JJ-HHMM.md). Les commentaires HTML sont des consignes : ne pas les recopier. Une section vide s'écrit « Aucun ».
+<!-- Gabarit d'une passe d'évaluation (docs/eval/AAAA-MM-JJ-HHMMSS.md). Les commentaires HTML sont des consignes : ne pas les recopier. Une section vide s'écrit « Aucun ».
 Identifiants : E-001, E-002… PERSISTANTS d'une passe à l'autre. Un point déjà présent dans l'eval précédent garde son identifiant ; un nouveau point prend le numéro suivant le plus grand jamais attribué (jamais de réutilisation, même pour un point levé).
 Les compteurs du frontmatter ne comptent que les points encore ouverts. Pour un eval de ticket (`etape: TICKET <ID>`), le « document courant » désigne les éléments du ticket (tous documents confondus). -->
 

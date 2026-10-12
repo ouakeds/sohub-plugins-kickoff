@@ -4,7 +4,8 @@
 L'agent écrit .sohub-plugin/sync/plan.json et .sohub-plugin/sync/corps/<clé>.(md|html), avec des liens
 symboliques `page:<clé>` et des marqueurs `{{spec:docs/contrats/<fichier>}}` / `{{date_synchro}}`. Ce script :
 
-  sources    <projet> <dossier du plugin>   empreinte des sources (documents + agent + gabarit) → stdout
+  sources    <projet> <dossier du plugin>   empreinte des sources (tout docs/ sauf docs/eval/, + agent + gabarit) → stdout
+  documents  <projet>                       liste des documents publiables (chemins relatifs au projet)
   verifier   <projet>                       contrôle le rendu de l'agent ; une erreur par ligne, code 1 si erreur
   squelette  <projet>                       migre les anciennes clés de confluence.json ; liste JSON des pages
                                             dans l'ordre du plan (clé, titre, parente, id connu) et des orphelines
@@ -18,8 +19,15 @@ symboliques `page:<clé>` et des marqueurs `{{spec:docs/contrats/<fichier>}}` / 
                                             publier dont l'image manque ou est périmée
   lots       <projet> [nombre max]          écrit .sohub-plugin/sync/lot-<n>.json (pages à publier)
   fusionner  <projet> <empreinte sources>   fusionne resultats-*.json dans confluence.json, supprime lots et résultats
+  upload     <projet> <fichier> <commande curl>   exécute la commande d'envoi renvoyée par createConfluenceAttachment
+                                            après contrôle : fichier sous docs/ (ou PNG d'un diagramme extrait), cité
+                                            par un lot, hôte = site de confluence.json ou api.atlassian.com, options sûres
+
+Seul le dossier docs/ du projet est publié (sauf docs/eval/, historique du processus) : aucun fichier hors de docs/
+n'est lu dans une page ni joint.
 """
-import glob, hashlib, html, json, os, re, shutil, subprocess, sys
+import glob, hashlib, html, json, os, re, shlex, shutil, subprocess, sys
+from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor
 
 PROCESS = [(r'§', '« § »'), (r'(?m)^#{1,6}\s+\d+(?:\.\d+)*\.?\s', 'titre numéroté'),
@@ -30,6 +38,15 @@ LINK = re.compile(r'(?<=\]\()page:([\w.-]+)|(?<=href=")page:([\w.-]+)')
 IDS = re.compile(r'\b(?:CU|EF|RG|ENF|EC|CMP|FL|CTR|CH|QA|Q|OBJ|CT)-\d+\b')
 STATUTS = {'brouillon': ('Brouillon', '#FF8B00'), 'proposé': ('Proposé', '#0065FF'), 'validé': ('Validé', '#36B37E'),
            'accepté': ('Validé', '#36B37E'), 'rejeté': ('Rejeté', '#6B778C'), 'déprécié': ('Déprécié', '#6B778C')}
+
+
+def statut_natif(st, defaut):
+    st = (st or '').strip()
+    if st.startswith('remplacé'):  # « remplacé par ADR-NNNN »
+        return ('Remplacé', '#6B778C')
+    return STATUTS.get(st, defaut)
+
+
 # Clés de l'ancienne arborescence → clés du plan
 OLD = {'docs/architecture.md#vue-ensemble': 'vue-ensemble', 'docs/prd.md': 'fonctionnel', 'docs/architecture.md': 'architecture',
        'docs/architecture.md#base-de-donnees': 'donnees', 'docs/architecture.md#flux': 'flux', 'docs/architecture.md#contrats': 'interfaces',
@@ -55,10 +72,28 @@ def cfg_path(p):
     return os.path.join(p, '.sohub-plugin', 'confluence.json')
 
 
+def docs_dir(p):
+    return os.path.realpath(os.path.join(p, 'docs'))
+
+
+def in_docs(p, path):
+    """Vrai si `path` (absolu, ou relatif au projet) désigne un fichier sous <projet>/docs/, hors docs/eval/."""
+    real = os.path.realpath(path if os.path.isabs(path) else os.path.join(p, path))
+    d = docs_dir(p)
+    return real.startswith(d + os.sep) and not real.startswith(os.path.join(d, 'eval') + os.sep) and os.path.isfile(real)
+
+
 def source_files(p):
-    files = [os.path.join(p, 'docs', f) for f in ('prd.md', 'architecture.md', 'glossaire.md')]
-    files += sorted(glob.glob(os.path.join(p, 'docs', 'adr', '*.md'))) + sorted(glob.glob(os.path.join(p, 'docs', 'contrats', '*')))
-    return [f for f in files if os.path.isfile(f)]
+    """Tous les fichiers publiables : docs/ entier, récursif, sauf docs/eval/ et les fichiers cachés."""
+    out = []
+    for root, dirs, files in os.walk(os.path.join(p, 'docs')):
+        dirs[:] = sorted(x for x in dirs if not x.startswith('.') and not (root == os.path.join(p, 'docs') and x == 'eval'))
+        out += [os.path.join(root, f) for f in sorted(files) if not f.startswith('.')]
+    return [f for f in out if in_docs(p, f)]
+
+
+def is_contract(p, f):
+    return os.path.relpath(f, p).replace(os.sep, '/').startswith('docs/contrats/')
 
 
 def corps_path(p, page):
@@ -72,11 +107,19 @@ def strip_code(text):
 
 
 def cmd_sources(p, plugin):
+    # chemins relatifs : l'empreinte ne change ni quand le projet est déplacé, ni quand le plugin change de dossier
     h = hashlib.sha256()
-    for f in source_files(p) + [os.path.join(plugin, 'agents', 'layout.md'), os.path.join(plugin, 'templates', 'confluence-tree.md')]:
+    files = [(os.path.relpath(f, p), f) for f in source_files(p)]
+    files += [(r, os.path.join(plugin, r)) for r in ('agents/layout.md', 'templates/confluence-tree.md')]
+    for rel, f in files:
         if os.path.isfile(f):
-            h.update(f.encode()); h.update(open(f, 'rb').read())
+            h.update(rel.replace(os.sep, '/').encode()); h.update(open(f, 'rb').read())
     print(h.hexdigest())
+
+
+def cmd_documents(p):
+    for f in source_files(p):
+        print(os.path.relpath(f, p).replace(os.sep, '/'))
 
 
 def cmd_verifier(p):
@@ -93,7 +136,12 @@ def cmd_verifier(p):
                 errs.append(f"{x.get('cle')} : champ « {f} » manquant")
         if x.get('parent') and x['parent'] not in keys:
             errs.append(f"{x['cle']} : parente inconnue « {x['parent']} »")
-    texts = {}
+    texts, cites = {}, set()
+    if len(set(keys)) != len(keys):
+        errs.append('clé en double dans le plan : ' + ', '.join(sorted({k for k in keys if keys.count(k) > 1})))
+    for x in plan['pages']:
+        if x.get('format') not in ('markdown', 'html'):
+            errs.append(f"{x.get('cle')} : format inconnu « {x.get('format')} » (markdown ou html)")
     for x in plan['pages']:
         cp = corps_path(p, x)
         if not os.path.isfile(cp):
@@ -103,8 +151,11 @@ def cmd_verifier(p):
             if k not in keys:
                 errs.append(f"{x['cle']} : lien vers une page absente du plan « page:{k} »")
         for f in re.findall(r'\{\{spec:([^}]+)\}\}', t):
-            if not os.path.isfile(os.path.join(p, f)):
-                errs.append(f"{x['cle']} : spécification introuvable « {f} »")
+            if not in_docs(p, f):
+                errs.append(f"{x['cle']} : spécification introuvable ou hors de docs/ « {f} »")
+            elif x.get('format') != 'html':
+                errs.append(f"{x['cle']} : {{{{spec:…}}}} n'est permis que dans une page Contrat (format html)")
+            cites.add(os.path.realpath(os.path.join(p, f)))
         bare = strip_code(t)
         for rx, label in PROCESS:
             m = re.search(rx, bare)
@@ -112,10 +163,19 @@ def cmd_verifier(p):
                 errs.append(f"{x['cle']} : {label} (« {bare[max(0, m.start() - 30):m.end() + 30].strip()} »)")
     if 'racine' in texts and '{{date_synchro}}' not in texts['racine']:
         errs.append('racine : marqueur {{date_synchro}} absent')
+    # docs/ est publié en entier : chaque document doit nourrir au moins une page, chaque spécification sa page Contrat
+    cited_docs = {s.split('§')[0].split('#')[0].strip() for x in plan['pages'] for s in x.get('sources', [])}
     src = set()
     for f in source_files(p):
-        if '/contrats/' not in f:
-            src |= set(IDS.findall(open(f, encoding='utf-8').read()))
+        rel = os.path.relpath(f, p).replace(os.sep, '/')
+        if is_contract(p, f):
+            if os.path.realpath(f) not in cites:
+                errs.append(f'spécification non publiée : {rel} (aucun {{{{spec:{rel}}}}} dans une page Contrat)')
+            continue
+        if rel not in cited_docs and not any(rel.startswith(c.rstrip('/') + '/') for c in cited_docs if c.endswith('/')):
+            errs.append(f'document non publié : {rel} (cité dans les « sources » d\'aucune page du plan)')
+        if f.endswith('.md'):
+            src |= set(IDS.findall(open(f, encoding='utf-8', errors='replace').read()))
     published = set(IDS.findall('\n'.join(texts.values())))
     retired = {r['id'] for r in plan.get('ids_retires', [])}
     for i in sorted(src - published - retired, key=lambda s: (s.split('-')[0], int(s.split('-')[1]))):
@@ -227,6 +287,8 @@ def cmd_resoudre(p, date):
         t = LINK.sub(lambda m: url(m.group(1) or m.group(2)), t)
 
         def spec(m):
+            if not in_docs(p, m.group(1)):  # jamais un fichier hors de docs/ (contrôlé aussi par verifier)
+                raise SystemExit(f"{x['cle']} : spécification hors de docs/ refusée « {m.group(1)} »")
             raw = open(os.path.join(p, m.group(1)), encoding='utf-8').read()
             lang = 'json' if m.group(1).endswith('.json') else 'yaml'
             if x['format'] == 'html':
@@ -237,8 +299,9 @@ def cmd_resoudre(p, date):
         t = t.replace('{{date_synchro}}', date)
         fp = os.path.join(out_dir, os.path.basename(corps_path(p, x))); open(fp, 'w', encoding='utf-8').write(t)
         diagrammes = extract_diagrams(p, x['cle'], t, x['format'])
-        jointes = [os.path.abspath(os.path.join(p, f)) for f in re.findall(r'\{\{spec:([^}]+)\}\}', open(corps_path(p, x), encoding='utf-8').read())]
-        nat = cadrage if x['cle'] in ('racine', 'glossaire') or x.get('statut') in (None, '—') else STATUTS.get(x.get('statut'), cadrage)
+        jointes = [os.path.realpath(os.path.join(p, f)) for f in re.findall(r'\{\{spec:([^}]+)\}\}', open(corps_path(p, x), encoding='utf-8').read())
+                   if x['format'] == 'html' and in_docs(p, f)]
+        nat = cadrage if x['cle'] in ('racine', 'glossaire') or x.get('statut') in (None, '—') else statut_natif(x.get('statut'), cadrage)
         k = known.get(x['cle']) or {}
         titre = titre_retenu(x, k)
         if not k.get('id'):
@@ -361,10 +424,72 @@ def cmd_fusionner(p, src_hash):
     return 1 if echecs else 0
 
 
+UPLOAD_OPTS = {'-L', '--location', '-X', '--request', '-H', '--header', '-F', '--form', '--url', '-s', '--silent',
+               '-S', '--show-error', '-f', '--fail', '--compressed', '--data-binary', '-T', '--upload-file'}
+UPLOAD_ARG = {'-X', '--request', '-H', '--header', '-F', '--form', '--url', '--data-binary', '-T', '--upload-file'}
+
+
+def cmd_upload(p, fichier, commande):
+    """Exécute la commande curl d'envoi après contrôle ; seule commande à autoriser pour joindre un fichier."""
+    real = os.path.realpath(fichier)
+    diag = os.path.realpath(os.path.join(p, *DIAG_DIR))
+    ok_file = in_docs(p, real) or (real.startswith(diag + os.sep) and real.endswith('.png') and os.path.isfile(real[:-4] + '.mmd'))
+    lots = [load(f, {}) for f in glob.glob(os.path.join(sync_dir(p), 'lot-*.json'))]
+    cites = {os.path.realpath(j) for l in lots for x in l.get('pages', []) for j in x.get('pieces_jointes', [])}
+    cites |= {os.path.realpath(d['png']) for l in lots for x in l.get('pages', []) for d in x.get('diagrammes', []) if d.get('png')}
+    if not ok_file:
+        print(f'REFUS : fichier hors de docs/ et des diagrammes rendus « {fichier} »'); return 1
+    if real not in cites:
+        print(f'REFUS : fichier absent des lots en cours « {fichier} »'); return 1
+    try:
+        argv = shlex.split(commande)
+    except ValueError as e:
+        print(f'REFUS : commande illisible ({e})'); return 1
+    if not argv or argv[0] != 'curl':
+        print('REFUS : la commande doit être un appel curl'); return 1
+    site = urlparse((load(cfg_path(p), {}) or {}).get('site') or '').hostname
+    hosts = {h for h in (site, 'api.atlassian.com') if h}
+    i, urls = 1, []
+    while i < len(argv):
+        a = argv[i]
+        if a.startswith('-'):
+            opt, _, val = a.partition('=') if a.startswith('--') else (a[:2], '', a[2:])
+            if opt not in UPLOAD_OPTS or (val and not a.startswith('--') and opt not in UPLOAD_ARG):
+                print(f'REFUS : option non permise « {a} »'); return 1
+            if opt in UPLOAD_ARG and not val:
+                i += 1
+                val = argv[i] if i < len(argv) else ''
+            if opt == '--url':
+                urls.append(val)
+            # fichier lu par curl : -F nom=@f / nom=<f (avant le premier « ; »), --data-binary @f, -T f
+            if opt in ('-F', '--form'):
+                v = val.split(';', 1)[0].partition('=')[2]
+                ref = v[1:] if v[:1] in ('@', '<') else None
+            elif opt == '--data-binary':
+                ref = val[1:] if val.startswith('@') else None
+            elif opt in ('-T', '--upload-file'):
+                ref = val
+            else:
+                ref = None
+            if ref is not None and os.path.realpath(os.path.expanduser(ref.strip('"\''))) != real:
+                print(f'REFUS : la commande envoie un autre fichier que « {fichier} »'); return 1
+        else:
+            urls.append(a)
+        i += 1
+    if not urls or any(urlparse(u).scheme != 'https' or urlparse(u).hostname not in hosts for u in urls):
+        print('REFUS : adresse non permise (https vers ' + ' ou '.join(sorted(hosts)) + ' seulement)'); return 1
+    r = subprocess.run(argv, capture_output=True, text=True)
+    sys.stdout.write(r.stdout)
+    if r.returncode:
+        sys.stdout.write(r.stderr[-500:])
+    return r.returncode
+
+
 if __name__ == '__main__':
     a = sys.argv[1:]
     cmds = {'sources': (cmd_sources, 2), 'verifier': (cmd_verifier, 1), 'squelette': (cmd_squelette, 1), 'enregistrer': (cmd_enregistrer, 5),
-            'ordre': (cmd_ordre, 2), 'resoudre': (cmd_resoudre, 2), 'rendre': (cmd_rendre, 2), 'lots': (cmd_lots, 1), 'fusionner': (cmd_fusionner, 2)}
+            'ordre': (cmd_ordre, 2), 'resoudre': (cmd_resoudre, 2), 'rendre': (cmd_rendre, 2), 'lots': (cmd_lots, 1), 'fusionner': (cmd_fusionner, 2),
+            'documents': (cmd_documents, 1), 'upload': (cmd_upload, 3)}
     if not a or a[0] not in cmds or len(a) - 1 < cmds[a[0]][1]:
         print(__doc__, file=sys.stderr); sys.exit(2)
     fn, n = cmds[a[0]]

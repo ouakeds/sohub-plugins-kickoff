@@ -23,7 +23,7 @@ Pour trouver `<projet>` :
 
 - `docs/prd.md`, `docs/architecture.md`, `docs/adr/index.md` + `docs/adr/NNNN-*.md`
 - `.sohub-plugin/backlog.md` + `.sohub-plugin/stories/US-NNN-*.md` (à la racine du projet, pas dans `docs/`) : backlog des user stories ; le tableau du backlog porte le statut de développement de chaque US.
-- `docs/eval/AAAA-MM-JJ-HHMM.md` : un fichier par passe d'eval, l'historique est conservé.
+- `docs/eval/AAAA-MM-JJ-HHMMSS.md` : un fichier par passe d'eval, l'historique est conservé.
 
 **Étape courante** = le premier document, dans l'ordre PRD → ARCHITECTURE → ADR (`docs/adr/index.md`) → BACKLOG (`.sohub-plugin/backlog.md`), qui n'existe pas ou dont le champ `statut` n'est pas `validé`.
 
@@ -31,10 +31,10 @@ Pour trouver `<projet>` :
 
 1. Détermine le dossier du projet. Si `<projet>/docs/` ne contient aucun document de cadrage, dis-le et propose de lancer `/create-project` ; arrête-toi.
 2. Détermine l'étape courante. Avec `--ticket <ID>`, l'étape est `TICKET <ID>` (le calcul ci-dessus ne s'applique pas).
-3. Obtiens l'horodatage avec `date +%Y-%m-%d-%H%M` et crée le dossier avec `mkdir -p <projet>/docs/eval`.
+3. Obtiens l'horodatage avec `date +%Y-%m-%d-%H%M%S` et crée le dossier avec `mkdir -p <projet>/docs/eval`.
 4. Chemin du fichier : `<projet>/docs/eval/<horodatage>.md`. S'il existe déjà, ajoute un suffixe `-2`, `-3`…
-4 bis. **Contrôle des plans de tâches** (étape BACKLOG, ou `TICKET <ID>`, dès que `.sohub-plugin/stories/` existe) : lance `python3 -I ${CLAUDE_SKILL_DIR}/check_tasks.py <projet>` (ajoute `--ticket <ID>` pour un ticket). Il vérifie mécaniquement que les stories sont prêtes à paralléliser (vagues, dépendances, fichiers écrits deux fois dans une vague, CA sans tâche, sous-tâches, lots d'US) et écrit `<projet>/.sohub-plugin/tasks.md`. Il ne bloque jamais.
-5. Invoque l'agent `evaluator` **au premier plan** (jamais en arrière-plan), avec pour description de l'appel `Agent` `Eval — <ÉTAPE>` (titre de tâche dans `.sohub-plugin/metrics.md`), et attends son rapport, en lui passant : le chemin absolu de `<projet>/docs/`, celui de `<projet>/.sohub-plugin/`, le chemin absolu du fichier à écrire, l'étape courante, le chemin du gabarit `${CLAUDE_SKILL_DIR}/../../templates/eval.md` et, s'il a été produit à l'étape 4 bis, le chemin du rapport `tasks.md`.
+4 bis. **Contrôle des plans de tâches** (étape BACKLOG, ou `TICKET <ID>`, dès que `.sohub-plugin/stories/` existe) : lance `python3 -I ${CLAUDE_SKILL_DIR}/check_tasks.py <projet>` (ajoute `--ticket <ID>` pour un ticket). Il vérifie mécaniquement que les stories sont prêtes à paralléliser (vagues, dépendances, fichiers écrits deux fois dans une vague, CA sans tâche, sous-tâches, lots d'US) et écrit `<projet>/.sohub-plugin/tasks.md` (`tasks-<ID>.md` pour un ticket). Il ne bloque jamais.
+5. Invoque l'agent `evaluator` **au premier plan** (jamais en arrière-plan), avec pour description de l'appel `Agent` `Eval — <ÉTAPE>` (titre de tâche dans `.sohub-plugin/metrics.md`), et attends son rapport, en lui passant : le chemin absolu de `<projet>/docs/`, celui de `<projet>/.sohub-plugin/`, le chemin absolu du fichier à écrire, l'étape courante, le chemin du gabarit `${CLAUDE_SKILL_DIR}/../../templates/eval.md` et, s'il a été produit à l'étape 4 bis, le chemin du rapport (`tasks.md` ou `tasks-<ID>.md`).
 6. Rapporte sa synthèse à l'utilisateur : chemin du fichier, nombre de points d'ombre, dont bloquants (et dont bloquants sur le document courant), points principaux.
 
 **Langue** : adresse-toi à l'utilisateur (questions, options, résumés, comptes rendus) dans la langue qu'il emploie.
