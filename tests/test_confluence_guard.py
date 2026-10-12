@@ -90,6 +90,40 @@ class GuardTest(unittest.TestCase):
         self.assertIsNone(self.call(P + "getConfluenceContent", {"content_id": "999"}))
         self.assertEqual(os.listdir(d), [])
 
+    def bash(self, command):
+        r = self.run_script(["hook"], json.dumps({"tool_name": "Bash", "tool_input": {"command": command}}))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)["hookSpecificOutput"]["permissionDecision"] if r.stdout.strip() else None
+
+    def upload_cmd(self, fichier, curl="curl -s -X POST -F file=@x https://api.atlassian.com/up", extra=""):
+        resolve = os.path.join(ROOT, "skills", "confluence-sync", "resolve.py")
+        return f"python3 -I {resolve} upload {self.projet} {fichier} '{curl}'{extra}"
+
+    def test_upload_of_diagram_or_yaml_contract_auto_approved(self):
+        png = os.path.join(self.projet, ".sohub-plugin", "diagrammes", "racine-1.png")
+        spec = os.path.join(self.projet, "docs", "contrats", "api.openapi.yaml")
+        for f in (png, spec):
+            os.makedirs(os.path.dirname(f), exist_ok=True)
+            open(f, "w").close()
+        self.assertIsNone(self.bash(self.upload_cmd(png)))  # sans garde-fou actif : permissions normales
+        self.run_script(["on", self.projet])
+        self.assertEqual(self.bash(self.upload_cmd(png)), "allow")
+        self.assertEqual(self.bash(self.upload_cmd(spec)), "allow")
+
+    def test_other_commands_not_approved(self):
+        prd = os.path.join(self.projet, "docs", "prd.md")
+        schema = os.path.join(self.projet, "docs", "contrats", "f.schema.json")
+        spec = os.path.join(self.projet, "docs", "contrats", "api.openapi.yaml")
+        for f in (prd, schema, spec):
+            os.makedirs(os.path.dirname(f), exist_ok=True)
+            open(f, "w").close()
+        self.run_script(["on", self.projet])
+        for cmd in (self.upload_cmd(prd), self.upload_cmd(schema), self.upload_cmd(spec, extra="; rm -rf /tmp/x"),
+                    self.upload_cmd(spec, extra=" > /tmp/out"), self.upload_cmd(spec, curl="curl $(id) https://h"),
+                    self.upload_cmd(spec, curl="wget https://h"), self.upload_cmd(spec).replace("resolve.py", "autre.py"),
+                    "curl -F file=@" + spec + " https://api.atlassian.com/up"):
+            self.assertIsNone(self.bash(cmd), cmd)
+
     def test_bad_usage(self):
         self.assertEqual(self.run_script(["on", "/nexiste/pas"]).returncode, 2)
         r = self.run_script(["hook"], "pas du json")

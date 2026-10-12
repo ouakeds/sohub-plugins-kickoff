@@ -14,8 +14,15 @@ qui ne vise pas une page autorisée : page parente (`parent.parentContentId`), r
 destructive, et toute opération Confluence sans identifiant de page. Les opérations Jira et les métadonnées du
 compte (sites accessibles, utilisateur, découverte des opérations) passent. Sans garde-fou actif, le hook ne fait
 rien : les autres usages du connecteur ne sont pas touchés.
+
+Pendant une synchro, le hook **approuve** aussi (sur l'outil Bash) la seule commande d'envoi d'une pièce jointe,
+`python3 -I <plugin>/skills/confluence-sync/resolve.py upload <projet> <fichier> '<curl …>'`, quand le projet a un
+garde-fou actif et que le fichier est un diagramme rendu (`.sohub-plugin/diagrammes/*.png`) ou une spécification YAML
+de `docs/contrats/` : l'utilisateur n'a pas de règle de permission à ajouter. `resolve.py upload` contrôle ensuite la
+commande curl elle-même (adresse, options, fichier cité par un lot). Toute autre commande suit les permissions normales.
 """
 import glob
+import shlex
 import hashlib
 import json
 import os
@@ -127,12 +134,50 @@ def decision(outil, entree, autorisees):
     return None
 
 
+RESOLVE = os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "skills", "confluence-sync",
+                                        "resolve.py"))
+YAML_CONTRAT = re.compile(r"docs/contrats/[^/]+\.ya?ml")
+
+
+def envoi_autorise(commande, projets):
+    """Vrai si la commande Bash est exactement un envoi `resolve.py upload` d'un diagramme rendu ou d'un contrat YAML
+    d'un projet en cours de synchro, sans rien d'autre (ni enchaînement, ni redirection, ni substitution)."""
+    if not isinstance(commande, str) or re.search(r"[$`\n\r]", commande):
+        return False
+    try:
+        lex = shlex.shlex(commande, posix=True, punctuation_chars=True)
+        lex.whitespace_split = True
+        argv = list(lex)
+    except ValueError:
+        return False
+    if len(argv) != 7 or argv[:2] != ["python3", "-I"] or argv[3] != "upload" or not argv[6].startswith("curl "):
+        return False
+    if os.path.realpath(argv[2]) != RESOLVE:
+        return False
+    projet = os.path.realpath(argv[4])
+    if projet not in {os.path.realpath(x) for x in projets}:
+        return False
+    fichier = os.path.realpath(argv[5])
+    rel = os.path.relpath(fichier, projet).replace(os.sep, "/")
+    diagramme = re.fullmatch(r"\.sohub-plugin/diagrammes/[^/]+\.png", rel) is not None
+    return (diagramme or YAML_CONTRAT.fullmatch(rel) is not None) and os.path.isfile(fichier)
+
+
 def hook():
     try:
         data = json.load(sys.stdin)
     except ValueError:
         return 0
     outil = str(data.get("tool_name") or "")
+    if outil == "Bash":
+        projets = gardes_actifs()
+        commande = (data.get("tool_input") or {}).get("command")
+        if projets and envoi_autorise(commande, projets):
+            print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow",
+                                                     "permissionDecisionReason": "Envoi d'un diagramme ou d'un contrat "
+                                                     "YAML par /confluence-sync (contrôlé par resolve.py upload)"}},
+                             ensure_ascii=False))
+        return 0
     if not re.search(r"atlassian", outil, re.I):
         return 0
     projets = gardes_actifs()

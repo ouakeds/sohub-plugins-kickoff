@@ -1,6 +1,6 @@
 ---
 name: create-diagram
-description: Construit un diagramme Mermaid avec l'utilisateur, à partir de sa demande — choix du type (séquence, processus, états, données, classes, composants, planning, chronologie, carte mentale, parcours), questions sur ce qui manque, aperçu PNG, corrections jusqu'à validation — et l'enregistre dans docs/diagrammes/, publié ensuite par /confluence-sync. Peut aussi reprendre un diagramme existant. À utiliser quand l'utilisateur veut créer, dessiner ou modifier un diagramme ou un schéma.
+description: Construit un diagramme Mermaid avec l'utilisateur, à partir de sa demande — choix du type (séquence, processus, états, données, classes, composants, planning, chronologie, carte mentale, parcours), questions sur ce qui manque, aperçu PNG, corrections jusqu'à validation — et l'enregistre dans docs/diagrammes/, publié ensuite par /confluence-sync dans Fonctionnel ou Architecture. Peut aussi reprendre un diagramme existant. À utiliser quand l'utilisateur veut créer, dessiner ou modifier un diagramme ou un schéma.
 argument-hint: "<besoin> [chemins de documents ou de diagramme existant…]"
 allowed-tools: AskUserQuestion, Skill, Read, Write, Glob, Grep, Bash(date:*), Bash(mkdir:*), Bash(mmdc:*), Bash(command:*)
 ---
@@ -12,7 +12,7 @@ Argument reçu : `$ARGUMENTS`. Il contient le **besoin** (texte libre, ex. « le
 ## Emplacement
 
 - **Base** : le projet, trouvé comme dans les autres skills — chemin d'un dossier contenant `docs/prd.md` passé en argument, sinon le répertoire courant s'il contient `docs/prd.md`, sinon un seul `*/docs/prd.md` dans les sous-dossiers directs (plusieurs → demande lequel via `AskUserQuestion`). Sans projet, la base est le répertoire courant (rappelle-le à l'utilisateur).
-- **Diagramme** : `<base>/docs/diagrammes/<nom>.md` (`<nom>` en kebab-case, tiré du titre). Publié par `/confluence-sync` sur la page « Diagrammes ».
+- **Diagramme** : `<base>/docs/diagrammes/<nom>.md` (`<nom>` en kebab-case, tiré du titre). Publié par `/confluence-sync` dans la page Fonctionnel (séquence, processus, états, parcours) ou Architecture (données, composants, classes).
 - **Aperçu** : `<base>/.sohub-plugin/diagrammes/<nom>.mmd` et `<nom>.png` (fichiers de travail, jamais publiés).
 
 Format du fichier :
@@ -62,7 +62,7 @@ Chaque question passe par `AskUserQuestion` (4 questions au plus par appel), ave
 4. **Brouillon.** Écris le diagramme. Lisibilité d'abord : libellés courts dans la langue de l'utilisateur, 15 éléments environ au plus (au-delà, propose de découper), pas de couleur ni de style sauf demande. Ce qui reste non tranché n'est pas dessiné : signale-le.
 5. **Aperçu.** Crée `<base>/.sohub-plugin/diagrammes/` avec `mkdir -p`, écris le diagramme seul dans `<nom>.mmd`, puis rends-le : `mmdc -p ${CLAUDE_SKILL_DIR}/../install-deps/puppeteer-config.json -i <nom>.mmd -o <nom>.png` (chemins absolus). Si le rendu échoue sur la syntaxe, corrige et relance (3 essais au plus) ; s'il échoue encore, montre l'erreur. Si `mmdc` est absent (`command -v mmdc`), dis-le, propose `/install-deps` (→ invoque le skill `sohub-plugins-spec:install-deps`) et continue sans aperçu. Montre à l'utilisateur : le chemin du PNG (à ouvrir), la source Mermaid dans un bloc de code, et en une ou deux lignes ce que tu as dessiné et ce que tu as laissé de côté.
 6. **Corrections.** Demande via `AskUserQuestion` : « C'est bon, enregistrer » / « Modifier » (description : « écris tes corrections dans le champ libre ») / « Changer de type » / « Abandonner ». « Modifier » → applique exactement ses corrections (s'il choisit l'option sans texte, redemande-le une fois), puis retour à l'étape 5 ; « Changer de type » → étape 2, en gardant ce qui est déjà tranché ; « Abandonner » → rien n'est écrit dans `docs/`, arrête-toi.
-7. **Enregistrement.** Obtiens la date-heure avec `date '+%Y-%m-%d %H:%M'`, crée `<base>/docs/diagrammes/` avec `mkdir -p` et écris le fichier au format ci-dessus. Pour un nouveau diagramme, si `<nom>.md` existe déjà, demande « Remplacer » / « Garder les deux » (suffixe `-2`, `-3`…). Pour un diagramme repris, mets à jour le fichier existant (diagramme, contexte s'il a changé, `maj`). Annonce le chemin, puis rappelle que `/confluence-sync` le publiera sur la page « Diagrammes » et que `/create-diagram <chemin>` permet de le reprendre.
+7. **Enregistrement.** Obtiens la date-heure avec `date '+%Y-%m-%d %H:%M'`, crée `<base>/docs/diagrammes/` avec `mkdir -p` et écris le fichier au format ci-dessus. Pour un nouveau diagramme, si `<nom>.md` existe déjà, demande « Remplacer » / « Garder les deux » (suffixe `-2`, `-3`…). Pour un diagramme repris, mets à jour le fichier existant (diagramme, contexte s'il a changé, `maj`). Annonce le chemin, puis rappelle que `/confluence-sync` le publiera dans la page Fonctionnel ou Architecture selon son type et que `/create-diagram <chemin>` permet de le reprendre.
 
 ## Règles
 

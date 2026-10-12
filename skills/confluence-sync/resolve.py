@@ -4,7 +4,7 @@
 L'agent écrit .sohub-plugin/sync/plan.json et .sohub-plugin/sync/corps/<clé>.(md|html), avec des liens
 symboliques `page:<clé>` et des marqueurs `{{spec:docs/contrats/<fichier>}}` / `{{date_synchro}}`. Ce script :
 
-  sources    <projet> <dossier du plugin>   empreinte des sources (tout docs/ sauf docs/eval/, + agent + gabarit) → stdout ;
+  sources    <projet> <dossier du plugin>   empreinte des sources (tout docs/ sauf docs/eval/ et docs/adr/, + agent + gabarit) → stdout ;
                                             relevé par fichier dans .sohub-plugin/sync/sources.json (enregistré par fusionner)
   changed    <projet> <dossier du plugin>   documents ajoutés / modifiés / supprimés depuis la dernière mise en page
                                             (transformation.files de confluence.json), pages à réécrire ou à garder
@@ -39,7 +39,7 @@ symboliques `page:<clé>` et des marqueurs `{{spec:docs/contrats/<fichier>}}` / 
                                             par un lot, hôte = site de confluence.json ou api.atlassian.com, options sûres ;
                                             avec SOHUB_UPLOAD_DRY_RUN=1, affiche la commande validée sans l'exécuter (tests)
 
-Seul le dossier docs/ du projet est publié (sauf docs/eval/, historique du processus) : aucun fichier hors de docs/
+Seul le dossier docs/ du projet est publié (sauf docs/eval/, historique du processus, et docs/adr/, décisions) : aucun fichier hors de docs/
 n'est lu dans une page ni joint.
 """
 import glob, hashlib, html, json, os, re, shlex, shutil, subprocess, sys
@@ -57,10 +57,19 @@ PROCESS = [(r'§', '« § »'), (r'(?m)^#{1,6}\s+' + _NUM, 'titre numéroté'),
            (r'https?://[^\s)"]*atlassian\.net', 'URL Confluence écrite en dur'),
            # documentation minimale : ni preuve du code, ni chemin de fichier source
            (r'\(\s*déduit\s*:', 'preuve du code « déduit : »'), (r'diffère du code actuel', 'preuve « diffère du code actuel »'),
-           (r'(?m)^\W*(?:<sub>)?\s*Sources\s*:', 'ligne « Sources : » de preuves'), (r'\bFichier\s*:', '« Fichier : » (chemin source)'),
-           (r'\b[\w.-]+/[\w./-]*\.[A-Za-z]{1,5}:\d+\b', 'référence fichier:ligne')]
+           (r'(?m)^\W*(?:<sub>)?\s*Sources\s*:', 'ligne « Sources : » de preuves'),
+           (r'\b[\w.-]+/[\w./-]*\.[A-Za-z]{1,5}:\d+\b', 'référence fichier:ligne'),
+           # documentation d'embarquement : ni questions ouvertes, ni dette
+           (r'À CLARIFIER', 'marqueur [À CLARIFIER] (à remplacer par « à préciser »)'),
+           (r'\bQ[AB]?-\d+\b', 'identifiant de question ouverte'),
+           (r'(?im)^\s*(?:#{1,6}|<h[1-6][^>]*>)\s*(?:Questions ouvertes|Points ouverts|Dette)', 'section questions ouvertes ou dette')]
+FICHIER = re.compile(r'\bFichier\s*:\s*(?:<code>|`)?([^\s<`·|]*)')
+YAML_CONTRAT = re.compile(r'docs/contrats/[^/]+\.ya?ml')
 LINK = re.compile(r'(?<=\]\()page:([\w.-]+)|(?<=href=")page:([\w.-]+)')
-IDS = re.compile(r'\b(?:CU|EF|RG|ENF|EC|CMP|FL|CTR|CH|QA|Q|OBJ|CT)-\d+\b')
+# Identifiants à ne pas perdre : cas d'usage, exigences fonctionnelles, règles métier, contrats. Les autres (ENF, écrans,
+# composants, flux synchrones, contraintes, questions ouvertes…) ne sont pas publiés dans la documentation minimale.
+IDS = re.compile(r'\b(?:CU|EF|RG|CTR)-\d+\b')
+NON_PUBLIES = ('eval', 'adr')  # dossiers de docs/ jamais publiés : historique des evals, décisions
 STATUTS = {'brouillon': ('Brouillon', '#FF8B00'), 'proposé': ('Proposé', '#0065FF'), 'validé': ('Validé', '#36B37E'),
            'accepté': ('Validé', '#36B37E'), 'rejeté': ('Rejeté', '#6B778C'), 'déprécié': ('Déprécié', '#6B778C')}
 
@@ -102,17 +111,18 @@ def docs_dir(p):
 
 
 def in_docs(p, path):
-    """Vrai si `path` (absolu, ou relatif au projet) désigne un fichier sous <projet>/docs/, hors docs/eval/."""
+    """Vrai si `path` (absolu, ou relatif au projet) désigne un fichier sous <projet>/docs/, hors docs/eval/ et docs/adr/."""
     real = os.path.realpath(path if os.path.isabs(path) else os.path.join(p, path))
     d = docs_dir(p)
-    return real.startswith(d + os.sep) and not real.startswith(os.path.join(d, 'eval') + os.sep) and os.path.isfile(real)
+    return (real.startswith(d + os.sep) and not any(real.startswith(os.path.join(d, x) + os.sep) for x in NON_PUBLIES)
+            and os.path.isfile(real))
 
 
 def source_files(p):
-    """Tous les fichiers publiables : docs/ entier, récursif, sauf docs/eval/ et les fichiers cachés."""
+    """Tous les fichiers publiables : docs/ entier, récursif, sauf docs/eval/, docs/adr/ et les fichiers cachés."""
     out = []
     for root, dirs, files in os.walk(os.path.join(p, 'docs')):
-        dirs[:] = sorted(x for x in dirs if not x.startswith('.') and not (root == os.path.join(p, 'docs') and x == 'eval'))
+        dirs[:] = sorted(x for x in dirs if not x.startswith('.') and not (root == os.path.join(p, 'docs') and x in NON_PUBLIES))
         out += [os.path.join(root, f) for f in sorted(files) if not f.startswith('.')]
     return [f for f in out if in_docs(p, f)]
 
@@ -250,6 +260,13 @@ def cmd_verifier(p):
             elif x.get('format') != 'html':
                 errs.append(f"{x['cle']} : {{{{spec:…}}}} n'est permis que dans une page Contrat (format html)")
             cites.add(os.path.realpath(os.path.join(p, f)))
+        # « Fichier : <chemin> » : seulement la spécification YAML jointe à une page Contrat
+        specs = set(re.findall(r'\{\{spec:([^}]+)\}\}', t))
+        for m in FICHIER.finditer(t):
+            chemin = m.group(1)
+            if not (x.get('format') == 'html' and YAML_CONTRAT.fullmatch(chemin) and chemin in specs):
+                errs.append(f"{x['cle']} : « Fichier : {chemin} » — un chemin n'est permis que pour la spécification "
+                            f"YAML jointe à une page Contrat")
         bare = strip_code(t)
         for rx, label in PROCESS:
             m = re.search(rx, bare)
@@ -435,8 +452,9 @@ def cmd_resoudre(p, date):
         t = t.replace('{{date_synchro}}', date)
         fp = os.path.join(out_dir, os.path.basename(corps_path(p, x))); open(fp, 'w', encoding='utf-8').write(t)
         diagrammes = extract_diagrams(p, x['cle'], t, x['format'])
+        # seules les spécifications YAML sont jointes (les autres restent lisibles dans leur bloc repliable)
         jointes = [os.path.realpath(os.path.join(p, f)) for f in re.findall(r'\{\{spec:([^}]+)\}\}', open(corps_path(p, x), encoding='utf-8').read())
-                   if x['format'] == 'html' and in_docs(p, f)]
+                   if x['format'] == 'html' and contrat_yaml(p, f)]
         nat = cadrage if x['cle'] in ('racine', 'glossaire') or x.get('statut') in (None, '—') else statut_natif(x.get('statut'), cadrage)
         k = known.get(x['cle']) or {}
         titre = titre_retenu(x, k)
@@ -561,6 +579,12 @@ def lot_files(known, x):
     return diags, pieces
 
 
+def contrat_yaml(p, path):
+    """Vrai si `path` (absolu, ou relatif au projet) est une spécification YAML de <projet>/docs/contrats/."""
+    real = os.path.realpath(path if os.path.isabs(path) else os.path.join(p, path))
+    return in_docs(p, real) and bool(YAML_CONTRAT.fullmatch(os.path.relpath(real, p).replace(os.sep, '/')))
+
+
 def piece_path(j):
     """Chemin d'une pièce jointe de lot (chaîne, ou objet {path, sha256, reuse})."""
     return j if isinstance(j, str) else j.get('path')
@@ -670,14 +694,15 @@ def cmd_upload(p, fichier, commande):
     """Exécute la commande curl d'envoi après contrôle ; seule commande à autoriser pour joindre un fichier."""
     real = os.path.realpath(fichier)
     diag = os.path.realpath(os.path.join(p, *DIAG_DIR))
-    ok_file = in_docs(p, real) or (real.startswith(diag + os.sep) and real.endswith('.png') and os.path.isfile(real[:-4] + '.mmd'))
+    # seuls fichiers envoyables : un diagramme rendu (PNG de son .mmd) ou une spécification YAML de docs/contrats/
+    ok_file = contrat_yaml(p, real) or (real.startswith(diag + os.sep) and real.endswith('.png') and os.path.isfile(real[:-4] + '.mmd'))
     lots = [load(f, {}) for f in glob.glob(os.path.join(sync_dir(p), 'lot-*.json'))]
     # une pièce marquée `reuse` (déjà jointe à l'identique) n'est pas à renvoyer
     cites = {os.path.realpath(piece_path(j)) for l in lots for x in l.get('pages', []) for j in x.get('pieces_jointes', [])
              if piece_path(j) and not (isinstance(j, dict) and j.get('reuse'))}
     cites |= {os.path.realpath(d['png']) for l in lots for x in l.get('pages', []) for d in x.get('diagrammes', []) if d.get('png') and not d.get('reuse')}
     if not ok_file:
-        print(f'REFUS : fichier hors de docs/ et des diagrammes rendus « {fichier} »'); return 1
+        print(f'REFUS : seuls les diagrammes rendus et les contrats YAML de docs/contrats/ sont envoyés « {fichier} »'); return 1
     if real not in cites:
         print(f'REFUS : fichier absent des lots en cours « {fichier} »'); return 1
     try:

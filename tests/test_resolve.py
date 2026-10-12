@@ -40,6 +40,7 @@ class Project:
         write(self.doc('docs/prd.md'), '---\nstatut: brouillon\n---\n# PRD\n')
         write(self.doc('docs/contrats/api.openapi.yaml'), SPEC)
         write(self.doc('docs/eval/historique.md'), 'S1 : rien\n')
+        write(self.doc('docs/adr/0001-stack.md'), '# ADR-0001 EF-09\n')  # docs/adr/ n'est pas publié
         write(self.doc('docs/.cache.md'), 'caché\n')
         write(self.doc('secret.txt'), 'secret\n')
         self.plan([dict(cle='racine', titre='Projet', format='markdown', sources=['docs/prd.md']),
@@ -143,6 +144,23 @@ class TestDocsOnly(Base):
         r = pr.run('verifier')
         self.assertEqual(r.returncode, 1); self.assertIn("n'est permis que dans une page Contrat", r.stdout)
 
+    def test_verifier_allows_yaml_contract_path_only(self):
+        pr = self.project()
+        pr.corps('contrat-api.html', '<p>Statut : Validé · Mis à jour : 2026-10-12 · Fichier : <code>docs/contrats/api.openapi.yaml</code></p>'
+                 '<details>{{spec:docs/contrats/api.openapi.yaml}}</details>')
+        r = pr.run('verifier')
+        self.assertEqual(r.returncode, 0, r.stdout)
+
+    def test_verifier_refuses_other_file_paths(self):
+        for name, body in (('racine.md', 'Statut : Validé · Fichier : docs/prd.md\n\n{{date_synchro}} [c](page:contrat-api)'),
+                           ('contrat-api.html', '<p>Fichier : <code>docs/contrats/autre.openapi.yaml</code></p>'
+                                                '<details>{{spec:docs/contrats/api.openapi.yaml}}</details>')):
+            pr = self.project()
+            pr.corps(name, body)
+            r = pr.run('verifier')
+            self.assertEqual(r.returncode, 1, name)
+            self.assertIn("un chemin n'est permis que pour la spécification YAML", r.stdout)
+
     def test_verifier_refuses_unpublished_document(self):
         pr = self.project(); write(pr.doc('docs/glossaire.md'), '# Glossaire\n')
         r = pr.run('verifier')
@@ -205,14 +223,22 @@ class TestUpload(Base):
 
     def test_refuses_file_outside_docs(self):
         r = self.upload(self.pr.doc('secret.txt'), self.cmd(form='file=@' + self.pr.doc('secret.txt')))
-        self.assertRefused(r, 'hors de docs/')
+        self.assertRefused(r, 'contrats YAML')
 
     def test_refuses_file_in_eval(self):
         f = self.pr.doc('docs/eval/historique.md')
-        self.assertRefused(self.upload(f, self.cmd(form='file=@' + f)), 'hors de docs/')
+        self.assertRefused(self.upload(f, self.cmd(form='file=@' + f)), 'contrats YAML')
+
+    def test_refuses_docs_that_are_not_yaml_contracts(self):
+        json_spec = self.pr.doc('docs/contrats/format.schema.json')
+        write(json_spec, '{}')
+        for f in (self.pr.doc('docs/prd.md'), json_spec):
+            write(self.pr.sync('lot-1.json'), json.dumps(dict(pages=[dict(cle='x', pieces_jointes=[os.path.realpath(f)], diagrammes=[])])))
+            self.assertRefused(self.upload(f, self.cmd(form='file=@' + f)), 'contrats YAML')
 
     def test_refuses_file_not_in_lots(self):
-        f = os.path.realpath(self.pr.doc('docs/prd.md'))
+        f = os.path.realpath(self.pr.doc('docs/contrats/autre.openapi.yaml'))
+        write(f, 'openapi: 3.1.0\n')
         self.assertRefused(self.upload(f, self.cmd(form='file=@' + f)), 'absent des lots')
 
     def test_refuses_other_file_in_form(self):
@@ -249,12 +275,14 @@ class TestProcessPatterns(unittest.TestCase):
         for t, label in (('Le minuteur démarre *(déduit : src/timer.ts:12)*', 'déduit'),
                          ('Cible *(diffère du code actuel : src/a.py:3)*', 'diffère'),
                          ('<sub>Sources : src/a.py:3, src/b.py:9</sub>', 'Sources'),
-                         ('Statut : Validé · Mis à jour : 2026-10-12 · Fichier : docs/prd.md', 'Fichier'),
-                         ('| CMP-01 | Comptes | app/accounts/models.py:40 |', 'fichier:ligne')):
+                         ('| CMP-01 | Comptes | app/accounts/models.py:40 |', 'fichier:ligne'),
+                         ('Délai [À CLARIFIER : Q-03]', 'À CLARIFIER'), ('voir QA-02', 'question ouverte'),
+                         ('## Questions ouvertes', 'section'), ('<h2>Dette technique</h2>', 'section')):
             self.assertTrue(any(label in l for l in self.labels(t)), t)
 
     def test_minimal_doc_no_false_positive(self):
-        for t in ('Appel sur http://localhost:3000/api', 'Base https://api.example.com:443/v1', 'Réunion à 10:30',
+        for t in ('Qualité de service Q-learning', 'Délai *(à préciser)*', 'QAS-01 hors sujet',
+                  'Appel sur http://localhost:3000/api', 'Base https://api.example.com:443/v1', 'Réunion à 10:30',
                   '<p>Spécification : fichier joint <code>api.openapi.yaml</code></p>', 'Version 1.2:3 du schéma'):
             self.assertEqual(self.labels(t), [], t)
 
