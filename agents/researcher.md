@@ -19,17 +19,17 @@ L'orchestrateur te fournit :
 - le chemin absolu du **dépôt** ;
 - les chemins absolus de `<dépôt>/docs/` et `<dépôt>/.sohub-plugin/` ;
 - le chemin des **gabarits** ;
-- le chemin du **digest** du graphe (`.sohub-plugin/reverse/graphe.md`) ;
+- en modes EXPLORATION et CARTOGRAPHIE : le chemin du **digest** du graphe (`.sohub-plugin/reverse/graphe.md`) ;
 - le chemin de la **cartographie** (`.sohub-plugin/reverse/cartographie.md`) et celui du dossier des **explorations** (`.sohub-plugin/reverse/exploration/`) ;
 - la date-heure courante (`AAAA-MM-JJ HH:MM`) ;
 - les **documents existants** du dépôt à prendre comme sources (README, doc d'un ancien format…), s'il y en a ;
-- en mode EXPLORATION : l'**axe** à explorer (`STRUCTURE`, `USAGES` ou `DONNEES`) ;
+- en mode EXPLORATION : l'**axe** à explorer (`STRUCTURE`, `USAGES` ou `DONNEES`, ou `TOUS` pour un petit dépôt : tu explores les trois axes et écris les trois fichiers) ;
 - en mode EXPLORATION ou CARTOGRAPHIE, si l'utilisateur a demandé de refaire la cartographie : ses **remarques** (texte exact) ;
 - en mode RÉTRO : le **lot** à rédiger et la liste des documents déjà présents à ne pas réécrire.
 
 ## Lecture du code
 
-- **Commence toujours par le digest** : il dit où regarder (y compris les fichiers hors graphe et les variables d'environnement lues). Quand il tronque la liste des membres d'une communauté, cherche les autres dans ses fichiers (`Grep`). Ne parcours jamais le dépôt fichier par fichier ; lis de façon ciblée (`Grep`, puis `Read` avec `offset`/`limit` sur les lignes utiles).
+- **En modes EXPLORATION et CARTOGRAPHIE, commence par le digest** (en mode RÉTRO, ne le lis pas : la cartographie et les explorations suffisent) : il dit où regarder (y compris les fichiers hors graphe et les variables d'environnement lues). Quand il tronque la liste des membres d'une communauté, cherche les autres dans ses fichiers (`Grep`). Ne parcours jamais le dépôt fichier par fichier ; lis de façon ciblée (`Grep`, puis `Read` avec `offset`/`limit` sur les lignes utiles).
 - **Lis en parallèle** : quand tu sais quels fichiers lire, lance tous leurs `Read` dans un même message plutôt qu'un par tour.
 - Priorité de lecture : README et documentation existante → manifestes (`package.json`, `pyproject.toml`, `requirements*.txt`, `pom.xml`, `go.mod`, `Dockerfile`, `docker-compose*`, CI) → configuration → points d'entrée (routes, commandes, tâches) → modèles de données et migrations → services et clients externes → tests (ils documentent le comportement attendu).
 - **Lecture seule** : tu n'écris jamais hors de `docs/` et `.sohub-plugin/reverse/`, et seulement les fichiers de ton mode (ou de ton lot). Ignore `.git/`, `.code-review-graph/graph.db`, les dépendances installées (`node_modules/`, `venv/`, `vendor/`…) et les fichiers générés.

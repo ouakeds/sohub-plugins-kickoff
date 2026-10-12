@@ -17,7 +17,8 @@ L'orchestrateur te donne :
 - le chemin du **gabarit de l'arborescence** (`confluence-tree.md`) : pages, ordre, parentes, lecteur et question de chaque page, contenu attendu, règles communes ;
 - la liste des documents à publier (sortie de `resolve.py documents` : tout `docs/` sauf `docs/eval/`) et leur origine (`rétro` pour un projet existant, sinon cadrage) ;
 - les titres déjà publiés, par clé (un titre suffixé ` (<Projet>)` est gardé) ;
-- éventuellement, la liste des **erreurs** d'une première tentative à corriger (le reste de ton travail précédent est dans `.sohub-plugin/sync/`).
+- éventuellement, la liste des **erreurs** d'une première tentative à corriger (le reste de ton travail précédent est dans `.sohub-plugin/sync/`) ;
+- éventuellement, pour une **mise en page incrémentale** : les documents ajoutés, modifiés et supprimés depuis la dernière mise en page, les pages à réécrire (`pages_to_rewrite`) et à garder (`pages_to_keep`) et le chemin `previous` (`.sohub-plugin/sync/previous/` : `plan.json` et `corps/` de la dernière mise en page).
 
 ## Méthode
 
@@ -43,6 +44,15 @@ L'orchestrateur te donne :
    - `resume` : le contenu de la page en quelques mots, avec un **compteur exact** (compte les lignes réellement publiées).
    - `ids_retires` : chaque identifiant métier présent dans les sources que tu ne publies **nulle part**, avec la raison. L'orchestrateur vérifie qu'aucun autre ne manque.
 
+## Mise en page incrémentale
+
+Quand l'orchestrateur te donne la liste des documents changés, ne refais pas tout : le texte réécrit varierait et chaque page serait republiée.
+- **Pages à garder** (aucune de leurs `sources` n'a changé) : recopie **à l'identique**, octet pour octet, leur corps précédent (`<previous>/corps/<clé>.md` ou `.html`) dans `corps/`, et garde leur entrée du plan précédent telle quelle (clé, titre, parente, format, statut, `maj`, `resume`, `sources`, place dans l'ordre). Ne les relis pas pour les améliorer.
+- **Pages à réécrire** : lis leurs documents sources (le gabarit et le plan précédent te donnent le cadre) et réécris seulement ces corps, selon la méthode ci-dessous.
+- **Document ajouté** : place-le comme à l'étape 2 (page existante, qui devient alors à réécrire, ou nouvelle page) ; **document supprimé** : retire son contenu des pages qui le citaient (une page qui n'a plus de source disparaît du plan).
+- **Racine** : réécris-la seulement si le sommaire change (page ajoutée, retirée, renommée) ; sinon recopie-la.
+- Reprends `ids_retires` du plan précédent, ajusté aux seules pages réécrites. Si un changement remet en cause la répartition d'autres pages (doublon nouveau, déplacement nécessaire), réécris aussi ces pages, et dis-le dans ta réponse.
+
 ## Latitude de rédaction
 
 Tu **peux** : réorganiser, déplacer et regrouper des blocs ; fusionner des doublons (en gardant la version la plus complète et les deux identifiants) ; condenser une redite ; retirer ce qui est hors sujet, vide ou propre au processus ; écrire les titres, une phrase d'introduction par page et de courtes transitions ; transformer un paragraphe d'étapes en liste numérotée ; traduire le jargon d'outillage en langage clair (« risque 0.70 », « 31 appels », « gros symbole », « N symboles sur M ») ; fusionner des tableaux qui décrivent les mêmes éléments ; retirer une colonne vide ou faite de renvois sans cible ; regrouper les preuves `*(déduit : …)*` d'une section en fin de section, comme le dit le gabarit (déplacées, jamais modifiées ni perdues) ; écrire l'exemple de `.env` et le premier appel de l'accueil à partir du tableau des variables et de la spécification de l'API exposée, sans rien y ajouter.
@@ -51,4 +61,4 @@ Tu ne **dois jamais** : inventer ou déduire un fait ; modifier un chiffre, une 
 
 ## Fin
 
-Rends **5 lignes au maximum** : nombre de pages écrites (et pages du gabarit non créées, faute de contenu), identifiants retirés et pourquoi, doublons fusionnés, choix de répartition notables.
+Rends **5 lignes au maximum** : nombre de pages écrites (pour une mise en page incrémentale : réécrites et recopiées à l'identique ; pages du gabarit non créées, faute de contenu), identifiants retirés et pourquoi, doublons fusionnés, choix de répartition notables.

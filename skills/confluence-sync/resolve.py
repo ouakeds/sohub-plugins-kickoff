@@ -4,7 +4,13 @@
 L'agent écrit .sohub-plugin/sync/plan.json et .sohub-plugin/sync/corps/<clé>.(md|html), avec des liens
 symboliques `page:<clé>` et des marqueurs `{{spec:docs/contrats/<fichier>}}` / `{{date_synchro}}`. Ce script :
 
-  sources    <projet> <dossier du plugin>   empreinte des sources (tout docs/ sauf docs/eval/, + agent + gabarit) → stdout
+  sources    <projet> <dossier du plugin>   empreinte des sources (tout docs/ sauf docs/eval/, + agent + gabarit) → stdout ;
+                                            relevé par fichier dans .sohub-plugin/sync/sources.json (enregistré par fusionner)
+  changed    <projet> <dossier du plugin>   documents ajoutés / modifiés / supprimés depuis la dernière mise en page
+                                            (transformation.files de confluence.json), pages à réécrire ou à garder
+                                            (sources du plan précédent) ; `full: true` si tout est à refaire (agent
+                                            layout ou gabarit modifié, aucun relevé, plan ou corps absents) ; sinon copie
+                                            plan.json et corps/ dans .sohub-plugin/sync/previous/ → JSON sur stdout
   documents  <projet>                       liste des documents publiables (chemins relatifs au projet)
   verifier   <projet>                       contrôle le rendu de l'agent ; une erreur par ligne, code 1 si erreur
   squelette  <projet>                       migre les anciennes clés de confluence.json ; liste JSON des pages
@@ -19,9 +25,13 @@ symboliques `page:<clé>` et des marqueurs `{{spec:docs/contrats/<fichier>}}` / 
                                             publier dont l'image manque ou est périmée
   lots       <projet> [--failed] [nombre max]   écrit .sohub-plugin/sync/lot-<n>.json (pages à publier) ; avec
                                             --failed, seulement les pages en échec ou incomplètes de la dernière
-                                            fusion (.sohub-plugin/sync/failed.json)
-  fusionner  <projet> <empreinte sources>   fusionne resultats-*.json dans confluence.json, supprime lots et résultats,
-                                            écrit la liste des pages en échec dans .sohub-plugin/sync/failed.json
+                                            fusion (.sohub-plugin/sync/failed.json) ; un PNG ou une spécification
+                                            dont le sha256 est celui déjà joint (files de la page, fileId connu) est
+                                            marqué `reuse: {fileId, attachmentId}` : il n'est pas renvoyé
+  fusionner  <projet> <empreinte sources>   fusionne resultats-*.json dans confluence.json (dont les fichiers joints
+                                            de chaque page, `files`, et le relevé des sources, transformation.files),
+                                            supprime lots et résultats, écrit la liste des pages en échec dans
+                                            .sohub-plugin/sync/failed.json
   forget     <projet> <clé>                 oublie l'id d'une page (ou de la racine) supprimée à la main dans
                                             Confluence : le squelette la recrée à la synchro
   upload     <projet> <fichier> <commande curl>   exécute la commande d'envoi renvoyée par createConfluenceAttachment
@@ -117,15 +127,84 @@ def strip_code(text):
     return re.sub(r'`[^`\n]*`|<code>.*?</code>', '', text)
 
 
-def cmd_sources(p, plugin):
+PLUGIN_FILES = ('agents/layout.md', 'templates/confluence-tree.md')
+
+
+def file_sha(path):
+    with open(path, 'rb') as fh:
+        return hashlib.sha256(fh.read()).hexdigest()
+
+
+def source_snapshot(p, plugin):
+    """Empreinte globale des sources, sha256 de chaque document (chemin relatif au projet) et des fichiers du plugin."""
     # chemins relatifs : l'empreinte ne change ni quand le projet est déplacé, ni quand le plugin change de dossier
     h = hashlib.sha256()
-    files = [(os.path.relpath(f, p), f) for f in source_files(p)]
-    files += [(r, os.path.join(plugin, r)) for r in ('agents/layout.md', 'templates/confluence-tree.md')]
-    for rel, f in files:
+    docs, plug = {}, {}
+    files = [(os.path.relpath(f, p).replace(os.sep, '/'), f, docs) for f in source_files(p)]
+    files += [(r, os.path.join(plugin, r), plug) for r in PLUGIN_FILES]
+    for rel, f, out in files:
         if os.path.isfile(f):
-            h.update(rel.replace(os.sep, '/').encode()); h.update(open(f, 'rb').read())
-    print(h.hexdigest())
+            data = open(f, 'rb').read()
+            h.update(rel.encode()); h.update(data)
+            out[rel] = hashlib.sha256(data).hexdigest()
+    return dict(empreinte=h.hexdigest(), files=docs, plugin=plug)
+
+
+def cmd_sources(p, plugin):
+    snap = source_snapshot(p, plugin)
+    os.makedirs(sync_dir(p), exist_ok=True)
+    save(os.path.join(sync_dir(p), 'sources.json'), snap)  # relevé enregistré par fusionner (transformation.files)
+    print(snap['empreinte'])
+
+
+def source_path(s):
+    """Chemin d'une entrée `sources` du plan (« docs/architecture.md § 7, 8 » → « docs/architecture.md »)."""
+    return s.split('§')[0].split('#')[0].strip()
+
+
+def cites_doc(sources, rel):
+    return any(c == rel or (c.endswith('/') and rel.startswith(c)) for c in map(source_path, sources or []))
+
+
+def cmd_changed(p, plugin):
+    """Documents changés depuis la dernière mise en page et pages du plan précédent à réécrire ou à garder."""
+    cur = source_snapshot(p, plugin)
+    tr = (load(cfg_path(p), {}) or {}).get('transformation') or {}
+    old, old_plug = tr.get('files'), tr.get('plugin')
+    out = dict(full=False, reasons=[], added=[], modified=[], removed=[], pages_to_rewrite=[], pages_to_keep=[], previous=None)
+    if old is None or old_plug is None:
+        out['reasons'].append('aucun relevé des sources de la dernière mise en page')
+        old, old_plug = old or {}, old_plug or {}
+    else:
+        if old_plug.get('agents/layout.md') != cur['plugin'].get('agents/layout.md'):
+            out['reasons'].append('agent layout modifié')
+        if old_plug.get('templates/confluence-tree.md') != cur['plugin'].get('templates/confluence-tree.md'):
+            out['reasons'].append('gabarit modifié')
+    out['added'] = sorted(set(cur['files']) - set(old))
+    out['removed'] = sorted(set(old) - set(cur['files']))
+    out['modified'] = sorted(f for f in set(cur['files']) & set(old) if cur['files'][f] != old[f])
+    plan = load(os.path.join(sync_dir(p), 'plan.json'))
+    if not plan or not plan.get('pages'):
+        out['reasons'].append('plan.json absent ou illisible')
+    elif not os.path.isdir(os.path.join(sync_dir(p), 'corps')):
+        out['reasons'].append('corps/ absent')
+    if not out['reasons']:
+        touched = out['modified'] + out['removed']
+        for x in plan['pages']:
+            if not os.path.isfile(corps_path(p, x)) or any(cites_doc(x.get('sources'), f) for f in touched):
+                out['pages_to_rewrite'].append(x['cle'])
+            else:
+                out['pages_to_keep'].append(x['cle'])
+        if (out['added'] or out['removed']) and 'racine' in out['pages_to_keep']:
+            out['pages_to_keep'].remove('racine'); out['pages_to_rewrite'].insert(0, 'racine')  # le sommaire change
+        # corps précédents conservés : l'agent recopie ceux des pages à garder même s'il réécrit corps/
+        prev = os.path.join(sync_dir(p), 'previous')
+        shutil.rmtree(prev, ignore_errors=True)
+        shutil.copytree(os.path.join(sync_dir(p), 'corps'), os.path.join(prev, 'corps'))
+        shutil.copy2(os.path.join(sync_dir(p), 'plan.json'), os.path.join(prev, 'plan.json'))
+        out['previous'] = os.path.abspath(prev)
+    out['full'] = bool(out['reasons'])
+    print(json.dumps(out, ensure_ascii=False, indent=1))
 
 
 def cmd_documents(p):
@@ -283,7 +362,7 @@ def cmd_forget(p, cle):
     k = cfg.get('racine') if cle == 'racine' else cfg.get('pages', {}).get(cle)
     if not k or not k.get('id'):
         print(f'clé inconnue ou sans id dans confluence.json : « {cle} »'); return 1
-    for f in ('id', 'url', 'statut', 'diagrammes', 'pieces_jointes', 'maj'):
+    for f in ('id', 'url', 'statut', 'diagrammes', 'pieces_jointes', 'maj', 'files'):
         k.pop(f, None)
     k['empreinte'] = None
     save(cfg_path(p), cfg)
@@ -456,8 +535,36 @@ def cmd_rendre(p, config):
     return 0
 
 
+def reuse_of(known, name, sha):
+    """Pièce déjà jointe à l'identique (même sha256, fileId connu) : {fileId, attachmentId}, sinon None."""
+    e = ((known or {}).get('files') or {}).get(name) or {}
+    if sha and e.get('sha256') == sha and e.get('fileId'):
+        return dict(fileId=e['fileId'], attachmentId=e.get('attachmentId'))
+    return None
+
+
+def lot_files(known, x):
+    """Diagrammes et pièces jointes d'une page du manifest, avec sha256 et `reuse` s'ils sont déjà joints à l'identique."""
+    diags = []
+    for d in x.get('diagrammes', []):
+        png = d['png'] if png_ok(d) else None
+        sha = file_sha(png) if png else None
+        diags.append(dict(png=png, titre=d['titre'], sha256=sha, reuse=reuse_of(known, os.path.basename(png), sha) if png else None))
+    pieces = []
+    for j in x.get('pieces_jointes', []):
+        sha = file_sha(j) if os.path.isfile(j) else None
+        pieces.append(dict(path=j, sha256=sha, reuse=reuse_of(known, os.path.basename(j), sha)))
+    return diags, pieces
+
+
+def piece_path(j):
+    """Chemin d'une pièce jointe de lot (chaîne, ou objet {path, sha256, reuse})."""
+    return j if isinstance(j, str) else j.get('path')
+
+
 def cmd_lots(p, n=6, failed=False):
     cfg = load(cfg_path(p), {}); man = load(os.path.join(sync_dir(p), 'manifest.json'))
+    known = dict(cfg.get('pages', {})); known['racine'] = cfg.get('racine') or {}
     if not man:
         print('manifest.json absent : lancer resoudre'); return 1
     if failed:
@@ -467,17 +574,23 @@ def cmd_lots(p, n=6, failed=False):
         todo = [x for x in man['pages'] if x['etat'] == 'à publier']
     for f in glob.glob(os.path.join(sync_dir(p), 'lot-*.json')):
         os.remove(f)
-    size = lambda x: 1 + 2 * len([d for d in x.get('diagrammes', []) if png_ok(d)]) + len(x.get('pieces_jointes', [])) + os.path.getsize(x['corps']) // 20000
+    files = {x['cle']: lot_files(known.get(x['cle']), x) for x in todo}
+    # une pièce réutilisée ne coûte rien à envoyer ; un diagramme réutilisé reste à insérer
+    size = lambda x: (1 + sum(1 if d['reuse'] else 2 for d in files[x['cle']][0] if d['png'])
+                      + len([j for j in files[x['cle']][1] if not j['reuse']]) + os.path.getsize(x['corps']) // 20000)
     lots = [[] for _ in range(min(n, len(todo)))]
     for x in sorted(todo, key=size, reverse=True):
         min(lots, key=lambda l: sum(map(size, l))).append(x)
+    reused = 0
     for i, l in enumerate(lots, 1):
         save(os.path.join(sync_dir(p), f'lot-{i}.json'), dict(cloudId=cfg.get('cloudId'), statut_natif_refuse=bool(cfg.get('statut_natif_refuse')), pages=[
             dict(cle=x['cle'], id=x['id'], titre=x['titre'], corps=x['corps'], format=x['format'], statut=x['statut'],
                  statut_local=x['statut_local'], maj=x['maj'], empreinte=x['empreinte'], url=x['url'],
-                 diagrammes=[dict(png=d['png'] if png_ok(d) else None, titre=d['titre']) for d in x.get('diagrammes', [])],
-                 pieces_jointes=x.get('pieces_jointes', [])) for x in l]))
+                 diagrammes=files[x['cle']][0], pieces_jointes=files[x['cle']][1]) for x in l]))
+        reused += sum(1 for x in l for f in files[x['cle']][0] + files[x['cle']][1] if f['reuse'])
         print(f"lot-{i} : " + ', '.join(x['cle'] for x in l))
+    if reused:
+        print(f'{reused} fichier(s) déjà joint(s) à l\'identique : non renvoyé(s)')
     if not todo:
         print('aucune page à publier')
     return 0
@@ -485,6 +598,7 @@ def cmd_lots(p, n=6, failed=False):
 
 def cmd_fusionner(p, src_hash):
     cfg = load(cfg_path(p), {}); man = {x['cle']: x for x in load(os.path.join(sync_dir(p), 'manifest.json'))['pages']}
+    lot = {x['cle']: x for f in glob.glob(os.path.join(sync_dir(p), 'lot-*.json')) for x in (load(f, {}) or {}).get('pages', [])}
     echecs = []
     for f in sorted(glob.glob(os.path.join(sync_dir(p), 'resultats-*.json'))):
         for k, v in load(f, {}).items():
@@ -496,19 +610,44 @@ def cmd_fusionner(p, src_hash):
             attendus = len([d for d in mk.get('diagrammes', []) if png_ok(d)])
             if v.get('statut_natif') == 'refusé':
                 cfg['statut_natif_refuse'] = True  # statuts personnalisés désactivés ou droits : on ne les redemande plus
-            incomplet = v.get('ok') and (v.get('diagrammes', 0) < attendus or v.get('pieces_jointes', 0) < len(mk.get('pieces_jointes', [])))
+            # fichiers du lot : sha256 (fait foi) et pièces réutilisées (déjà jointes à l'identique : comptent comme jointes)
+            lp = lot.get(k) or {}
+            entries = [(os.path.basename(d['png']), d) for d in lp.get('diagrammes', []) if isinstance(d, dict) and d.get('png')]
+            entries += [(os.path.basename(piece_path(j)), j) for j in lp.get('pieces_jointes', []) if isinstance(j, dict)]
+            reuse = {name: e['reuse'] for name, e in entries if e.get('reuse')}
+            shas = {name: e.get('sha256') for name, e in entries}
+            sent = {name: r for name, r in (v.get('files') or {}).items() if isinstance(r, dict) and r.get('fileId')}
+            pieces = [os.path.basename(j) for j in mk.get('pieces_jointes', [])]
+            if 'files' in v:
+                jointes = len([n for n in pieces if n in reuse or n in sent])
+            else:
+                jointes = v.get('pieces_jointes', 0) + len([n for n in pieces if n in reuse])
+            incomplet = v.get('ok') and (v.get('diagrammes', 0) < attendus or jointes < len(pieces))
             if incomplet:
-                echecs.append((k, f"incomplète : {v.get('diagrammes', 0)}/{attendus} diagramme(s), {v.get('pieces_jointes', 0)}/{len(mk.get('pieces_jointes', []))} pièce(s) jointe(s) — republiée à la prochaine synchro"))
+                echecs.append((k, f"incomplète : {v.get('diagrammes', 0)}/{attendus} diagramme(s), {jointes}/{len(pieces)} pièce(s) jointe(s) — republiée à la prochaine synchro"))
             if v.get('ok'):
                 target.update(id=v.get('id') or target.get('id'), titre=v.get('titre') or target.get('titre'), maj=v.get('maj'), empreinte=v.get('empreinte'),
                               statut=(man.get(k) or {}).get('statut', {}).get('name') if v.get('statut_natif') != 'refusé' else target.get('statut'),
                               format=(man.get(k) or {}).get('format'), url=v.get('url') or target.get('url'),
-                              diagrammes=v.get('diagrammes', 0), pieces_jointes=v.get('pieces_jointes', 0))
+                              diagrammes=v.get('diagrammes', 0), pieces_jointes=jointes)
+                files = dict(target.get('files') or {})
+                for name, r in reuse.items():
+                    files[name] = dict(sha256=shas.get(name), fileId=r.get('fileId'), attachmentId=r.get('attachmentId'))
+                for name, r in sent.items():
+                    files[name] = dict(sha256=shas.get(name) or r.get('sha256'), fileId=r['fileId'], attachmentId=r.get('attachmentId'))
+                if files:
+                    target['files'] = files
                 if incomplet:
                     target['empreinte'] = None
             else:
                 target['empreinte'] = None; echecs.append((k, v.get('erreurs')))
-    cfg['transformation'] = dict(empreinte=src_hash)
+    # relevé des sources (sha256 par document, agent et gabarit) pris par `sources` pour cette empreinte : base de `changed`
+    snap = load(os.path.join(sync_dir(p), 'sources.json'), {}) or {}
+    old = cfg.get('transformation') or {}
+    if snap.get('empreinte') == src_hash:
+        cfg['transformation'] = dict(empreinte=src_hash, files=snap.get('files', {}), plugin=snap.get('plugin', {}))
+    elif old.get('empreinte') != src_hash:  # relevé inconnu pour cette empreinte : la prochaine mise en page sera complète
+        cfg['transformation'] = dict(empreinte=src_hash)
     save(cfg_path(p), cfg)
     save(os.path.join(sync_dir(p), 'failed.json'), sorted({k for k, _ in echecs}))  # pour lots --failed
     for f in glob.glob(os.path.join(sync_dir(p), 'lot-*.json')) + glob.glob(os.path.join(sync_dir(p), 'resultats-*.json')):
@@ -529,8 +668,10 @@ def cmd_upload(p, fichier, commande):
     diag = os.path.realpath(os.path.join(p, *DIAG_DIR))
     ok_file = in_docs(p, real) or (real.startswith(diag + os.sep) and real.endswith('.png') and os.path.isfile(real[:-4] + '.mmd'))
     lots = [load(f, {}) for f in glob.glob(os.path.join(sync_dir(p), 'lot-*.json'))]
-    cites = {os.path.realpath(j) for l in lots for x in l.get('pages', []) for j in x.get('pieces_jointes', [])}
-    cites |= {os.path.realpath(d['png']) for l in lots for x in l.get('pages', []) for d in x.get('diagrammes', []) if d.get('png')}
+    # une pièce marquée `reuse` (déjà jointe à l'identique) n'est pas à renvoyer
+    cites = {os.path.realpath(piece_path(j)) for l in lots for x in l.get('pages', []) for j in x.get('pieces_jointes', [])
+             if piece_path(j) and not (isinstance(j, dict) and j.get('reuse'))}
+    cites |= {os.path.realpath(d['png']) for l in lots for x in l.get('pages', []) for d in x.get('diagrammes', []) if d.get('png') and not d.get('reuse')}
     if not ok_file:
         print(f'REFUS : fichier hors de docs/ et des diagrammes rendus « {fichier} »'); return 1
     if real not in cites:
@@ -583,7 +724,7 @@ def cmd_upload(p, fichier, commande):
 
 if __name__ == '__main__':
     a = sys.argv[1:]
-    cmds = {'sources': (cmd_sources, 2), 'verifier': (cmd_verifier, 1), 'squelette': (cmd_squelette, 1), 'enregistrer': (cmd_enregistrer, 5),
+    cmds = {'sources': (cmd_sources, 2), 'changed': (cmd_changed, 2), 'verifier': (cmd_verifier, 1), 'squelette': (cmd_squelette, 1), 'enregistrer': (cmd_enregistrer, 5),
             'ordre': (cmd_ordre, 2), 'resoudre': (cmd_resoudre, 2), 'rendre': (cmd_rendre, 2), 'lots': (cmd_lots, 1), 'fusionner': (cmd_fusionner, 2),
             'documents': (cmd_documents, 1), 'upload': (cmd_upload, 3), 'forget': (cmd_forget, 2)}
     if not a or a[0] not in cmds or len(a) - 1 < cmds[a[0]][1]:

@@ -4,6 +4,7 @@ eval_precedent: <!-- AAAA-MM-JJ-HHMMSS ou aucun -->
 points_ouverts: <N>
 bloquants: <B>
 bloquants_document_courant: <BC>
+dernier_id: <!-- E-xxx : plus grand identifiant jamais attribué, cette passe comprise -->
 ---
 <!-- Gabarit d'une passe d'évaluation (docs/eval/AAAA-MM-JJ-HHMMSS.md). Les commentaires HTML sont des consignes : ne pas les recopier. Une section vide s'écrit « Aucun ».
 Identifiants : E-001, E-002… PERSISTANTS d'une passe à l'autre. Un point déjà présent dans l'eval précédent garde son identifiant ; un nouveau point prend le numéro suivant le plus grand jamais attribué (jamais de réutilisation, même pour un point levé).

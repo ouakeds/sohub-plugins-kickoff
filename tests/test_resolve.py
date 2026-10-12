@@ -352,6 +352,153 @@ class TestFusion(Base):
         self.assertEqual([x['cle'] for l in lots for x in l['pages']], ['contrat-api'])
 
 
+# ---------------------------------------------------------------- mise en page incrémentale
+
+class TestChanged(Base):
+    def setUp(self):
+        super().setUp()
+        self.pr = self.project()
+        write(self.pr.doc('docs/glossaire.md'), '# Glossaire\n')
+        self.pr.plan([dict(cle='racine', titre='Projet', format='markdown', sources=['docs/prd.md § 1']),
+                      dict(cle='glossaire', titre='Glossaire', format='markdown', parent='racine', sources=['docs/glossaire.md']),
+                      dict(cle='contrat-api', titre='Contrat API', format='html', parent='racine', sources=['docs/contrats/api.openapi.yaml'])])
+        self.pr.corps('glossaire.md', 'Glossaire\n')
+        self.plugin = os.path.join(self.tmp, 'plugin')
+        write(os.path.join(self.plugin, 'agents', 'layout.md'), 'agent\n')
+        write(os.path.join(self.plugin, 'templates', 'confluence-tree.md'), 'gabarit\n')
+        self.pr.cfg(dict(cloudId='c', pages={}))
+        h = self.pr.run('sources', self.plugin).stdout.strip()
+        self.pr.run('resoudre', '2026-01-01 10:00')
+        self.assertEqual(self.pr.run('fusionner', h).returncode, 0)
+
+    def changed(self):
+        r = self.pr.run('changed', self.plugin)
+        self.assertEqual(r.returncode, 0, r.stdout)
+        return json.loads(r.stdout)
+
+    def test_fusion_records_transformation_files(self):
+        tr = self.pr.cfg()['transformation']
+        self.assertEqual(sorted(tr['files']), ['docs/contrats/api.openapi.yaml', 'docs/glossaire.md', 'docs/prd.md'])
+        self.assertEqual(tr['files']['docs/prd.md'], R.file_sha(self.pr.doc('docs/prd.md')))
+        self.assertEqual(sorted(tr['plugin']), ['agents/layout.md', 'templates/confluence-tree.md'])
+        # reprise avec l'empreinte enregistrée : le relevé est gardé ; empreinte inconnue : relevé abandonné
+        self.pr.run('fusionner', tr['empreinte'])
+        self.assertEqual(self.pr.cfg()['transformation'], tr)
+        self.pr.run('fusionner', 'autre')
+        self.assertEqual(self.pr.cfg()['transformation'], dict(empreinte='autre'))
+        self.assertTrue(self.changed()['full'])
+
+    def test_nothing_changed(self):
+        c = self.changed()
+        self.assertFalse(c['full']); self.assertEqual((c['added'], c['modified'], c['removed'], c['pages_to_rewrite']), ([], [], [], []))
+
+    def test_modified_document_rewrites_only_its_pages_and_keeps_previous(self):
+        write(self.pr.doc('docs/glossaire.md'), '# Glossaire\nmaj: 2026-02-01\n')
+        c = self.changed()
+        self.assertFalse(c['full']); self.assertEqual(c['modified'], ['docs/glossaire.md'])
+        self.assertEqual(c['pages_to_rewrite'], ['glossaire']); self.assertEqual(c['pages_to_keep'], ['racine', 'contrat-api'])
+        self.assertTrue(os.path.isfile(os.path.join(c['previous'], 'corps', 'racine.md')))
+        self.assertTrue(os.path.isfile(os.path.join(c['previous'], 'plan.json')))
+
+    def test_added_and_removed_documents_rewrite_root(self):
+        write(self.pr.doc('docs/guide.md'), '# Guide\n')
+        c = self.changed()
+        self.assertEqual(c['added'], ['docs/guide.md']); self.assertEqual(c['pages_to_rewrite'], ['racine'])
+        os.remove(self.pr.doc('docs/guide.md')); os.remove(self.pr.doc('docs/glossaire.md'))
+        c = self.changed()
+        self.assertEqual((c['added'], c['removed']), ([], ['docs/glossaire.md']))
+        self.assertEqual(c['pages_to_rewrite'], ['racine', 'glossaire']); self.assertEqual(c['pages_to_keep'], ['contrat-api'])
+
+    def test_layout_or_template_change_means_full(self):
+        write(os.path.join(self.plugin, 'agents', 'layout.md'), 'agent v2\n')
+        c = self.changed()
+        self.assertTrue(c['full']); self.assertIn('agent layout modifié', c['reasons']); self.assertIsNone(c['previous'])
+        write(os.path.join(self.plugin, 'agents', 'layout.md'), 'agent\n')
+        write(os.path.join(self.plugin, 'templates', 'confluence-tree.md'), 'gabarit v2\n')
+        c = self.changed()
+        self.assertTrue(c['full']); self.assertEqual(c['reasons'], ['gabarit modifié'])
+
+    def test_full_without_record_or_plan(self):
+        cfg = self.pr.cfg(); del cfg['transformation']; self.pr.cfg(cfg)
+        self.assertTrue(self.changed()['full'])
+        h = self.pr.run('sources', self.plugin).stdout.strip(); self.pr.run('fusionner', h)
+        os.remove(self.pr.sync('plan.json'))
+        self.assertIn('plan.json absent ou illisible', self.changed()['reasons'])
+
+
+# ---------------------------------------------------------------- pièces jointes et diagrammes déjà joints
+
+class TestReuse(Base):
+    def setUp(self):
+        super().setUp()
+        self.pr = self.project(mermaid=True)
+        self.pr.fake_mmdc()
+        self.pr.cfg(dict(cloudId='c', site='https://exemple.atlassian.net',
+                         racine=dict(id='1', url='https://exemple.atlassian.net/wiki/1', titre='Projet'),
+                         pages={'contrat-api': dict(id='2', url='https://exemple.atlassian.net/wiki/2', titre='Contrat API')}))
+        self.pr.run('resoudre', '2026-01-01 10:00')
+        self.pr.run('rendre', os.path.join(self.tmp, 'puppeteer.json'))
+        self.pr.run('lots')
+        self.spec = os.path.realpath(self.pr.doc('docs/contrats/api.openapi.yaml'))
+        self.png = lot_page(self.pr, 'racine')['diagrammes'][0]['png']
+
+    def publish(self, racine_files, contrat_files, pieces=None):
+        res = {'racine': dict(ok=True, id='1', titre='Projet', url='u1', empreinte='e', diagrammes=1, files=racine_files),
+               'contrat-api': dict(ok=True, id='2', titre='Contrat API', url='u2', empreinte='f', files=contrat_files)}
+        if pieces is not None:
+            res['contrat-api']['pieces_jointes'] = pieces
+            del res['contrat-api']['files']
+        write(self.pr.sync('resultats-1.json'), json.dumps(res))
+        return self.pr.run('fusionner', 'h')
+
+    def first_publication(self):
+        self.assertIsNone(lot_page(self.pr, 'racine')['diagrammes'][0]['reuse'])
+        self.assertIsNone(lot_page(self.pr, 'contrat-api')['pieces_jointes'][0]['reuse'])
+        r = self.publish({'racine-1.png': dict(fileId='f-png', attachmentId='att1')},
+                         {'api.openapi.yaml': dict(fileId='f-spec', attachmentId='att2')})
+        self.assertEqual(r.returncode, 0, r.stdout)
+
+    def test_fusion_records_files(self):
+        self.first_publication()
+        cfg = self.pr.cfg()
+        self.assertEqual(cfg['racine']['files'], {'racine-1.png': dict(sha256=R.file_sha(self.png), fileId='f-png', attachmentId='att1')})
+        self.assertEqual(cfg['pages']['contrat-api']['files']['api.openapi.yaml'],
+                         dict(sha256=R.file_sha(self.spec), fileId='f-spec', attachmentId='att2'))
+
+    def test_unchanged_files_reused_and_not_uploadable(self):
+        self.first_publication()
+        self.pr.run('resoudre', '2026-01-02 10:00'); self.pr.run('lots')
+        self.assertEqual(lot_page(self.pr, 'racine')['diagrammes'][0]['reuse'], dict(fileId='f-png', attachmentId='att1'))
+        self.assertEqual(lot_page(self.pr, 'contrat-api')['pieces_jointes'][0]['reuse'], dict(fileId='f-spec', attachmentId='att2'))
+        r = self.pr.run('upload', self.spec, f"curl -s -F file=@{self.spec} https://api.atlassian.com/x")
+        self.assertIn('absent des lots', r.stdout)
+        # page aux pièces réutilisées : jointe, pas « incomplète » (publisher sans `files`, ou avec `files` vide)
+        r = self.publish({}, {})
+        self.assertEqual(r.returncode, 0, r.stdout); self.assertEqual(read_json(self.pr.sync('failed.json')), [])
+        self.assertEqual(self.pr.cfg()['pages']['contrat-api']['files']['api.openapi.yaml']['fileId'], 'f-spec')
+        self.pr.run('lots')
+        self.assertEqual(self.publish({}, None, pieces=0).returncode, 0)
+
+    def test_changed_files_sent_again(self):
+        self.first_publication()
+        write(self.pr.doc('docs/contrats/api.openapi.yaml'), SPEC + 'servers: []\n')
+        write(self.png, 'autre png')
+        self.pr.run('resoudre', '2026-01-02 10:00'); self.pr.run('lots')
+        self.assertIsNone(lot_page(self.pr, 'racine')['diagrammes'][0]['reuse'])
+        self.assertIsNone(lot_page(self.pr, 'contrat-api')['pieces_jointes'][0]['reuse'])
+        r = self.pr.run('upload', self.spec, f"curl -s -F file=@{self.spec} https://api.atlassian.com/x")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        # envoi échoué : page incomplète
+        r = self.publish({'racine-1.png': dict(fileId='f-png2', attachmentId='att1')}, {})
+        self.assertIn('ÉCHEC contrat-api : incomplète', r.stdout)
+        self.assertEqual(self.pr.cfg()['racine']['files']['racine-1.png']['sha256'], R.file_sha(self.png))
+
+    def test_forget_drops_files(self):
+        self.first_publication()
+        self.pr.run('forget', 'contrat-api')
+        self.assertNotIn('files', self.pr.cfg()['pages']['contrat-api'])
+
+
 class TestForgetAndOrder(Base):
     def setUp(self):
         super().setUp()

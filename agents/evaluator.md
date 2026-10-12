@@ -51,8 +51,8 @@ L'orchestrateur te fournit le chemin du gabarit `eval.md`. Lis-le et respecte sa
 Lis l'**eval précédent** s'il existe. Les noms de fichiers sont `AAAA-MM-JJ-HHMMSS` (suffixe `-2`… en cas de collision) : le plus récent est celui dont le nom sans `.md` est le plus grand. Pour un ticket (`TICKET <ID>`), l'eval précédent est le plus récent de même `etape`, à défaut le plus récent tout court ; sinon, c'est le plus récent dont l'`etape` n'est pas un ticket. Puis :
 - un point toujours présent **garde son identifiant** `E-xxx` ;
 - un point qui n'a plus lieu d'être est listé dans « Points levés » (avec l'endroit où la réponse est maintenant écrite) ;
-- un nouveau point prend le numéro suivant le plus grand identifiant jamais attribué (consulte tout l'historique de `docs/eval/` au besoin) ; un identifiant n'est jamais réutilisé.
+- un nouveau point prend le numéro suivant le plus grand identifiant jamais attribué : le champ `dernier_id` de l'eval le plus récent (toutes étapes confondues) ; s'il manque (ancien eval), le plus grand E-xxx de cet eval. Ne relis pas tout l'historique de `docs/eval/`. Un identifiant n'est jamais réutilisé.
 
-Remplis le frontmatter (étape, eval précédent, compteurs de points **ouverts**) : il est relu par les autres commandes.
+Remplis le frontmatter (étape, eval précédent, `dernier_id` = plus grand E-xxx jamais attribué, ce passage compris, compteurs de points **ouverts**) : il est relu par les autres commandes.
 
 Rends ensuite à l'orchestrateur, en quelques lignes : le chemin du fichier écrit, le nombre de points (dont bloquants, dont bloquants sur le document courant) et les 3 points les plus importants.

@@ -179,7 +179,7 @@ class StopHook(Base):
         project = make_project(os.path.join(self.tmp, "app"))
         prompt = f"Mode : ANALYSE. Projet : {project}/docs/prd.md"
         self.hook("subagent", self.agent_run("S1", "a1", prompt, t0="10:00:00", t1="10:02:00"))
-        transcript = self.session_transcript("S1", "/kickoff une idée")
+        transcript = self.session_transcript("S1", "/create-project une idée")
         stop = {"session_id": "S1", "transcript_path": transcript, "cwd": self.tmp, "hook_event_name": "Stop"}
         self.hook("stop", stop)
         first = metrics_rows(project)
