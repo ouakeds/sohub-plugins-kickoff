@@ -6,7 +6,7 @@
 
 *Plugin Claude Code de cadrage de projet : PRD, architecture, ADR, user stories, contrats OpenAPI et publication Confluence, pour que l'IA qui développera n'ait rien à deviner ni à inventer.*
 
-[![Version](https://img.shields.io/badge/version-0.15.0-blue)](.claude-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-0.16.0-blue)](.claude-plugin/plugin.json)
 [![Licence MIT](https://img.shields.io/badge/licence-MIT-green)](LICENSE)
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://docs.claude.com/en/docs/claude-code/plugins)
 [![Python 3](https://img.shields.io/badge/Python-3-3776AB?logo=python&logoColor=white)](#-stack--technos)
@@ -15,7 +15,7 @@
 [![Confluence](https://img.shields.io/badge/Confluence-sync-0052CC?logo=confluence&logoColor=white)](#-skills)
 [![Langue](https://img.shields.io/badge/langue-français-lightgrey)](#)
 
-[Démarrage rapide](#-démarrage-rapide) · [Skills](#-skills) · [Stack](#-stack--technos) · [Documents produits](#-documents-produits) · [Conception](#-conception) · [Licence](#-licence)
+[Démarrage rapide](#-démarrage-rapide) · [Skills](#-skills) · [Stack](#-stack--technos) · [Documents produits](#-documents-produits) · [Conception](#-conception) · [Scénarios ticket](#-scénarios-create-ticket) · [Licence](#-licence)
 
 </div>
 
@@ -42,13 +42,19 @@ flowchart LR
     K <--> E["/review-specs"]
     K --> V["/validate-step"]
     V -->|PRD → archi → ADR → backlog| K
-    R --> D[(docs/<br/>PRD · architecture<br/>ADR · glossaire)]
-    V --> D
+    R --> DR[(docs/ rétro<br/>PRD · architecture<br/>glossaire, sans ADR)]
+    V --> D[(docs/<br/>PRD · architecture<br/>ADR · glossaire)]
     D --> O["/create-api-specs"]
+    DR --> O
     O --> S["/confluence-sync"]
     D --> S
+    DR --> S
     S --> CF([📘 Confluence])
     V --> B[(backlog + stories)]
+    D --> T["/create-ticket"]
+    DR --> T
+    T -->|mise à jour en place| D
+    T --> B
     B --> DEV([🤖 IA de dev])
 ```
 
@@ -80,10 +86,10 @@ Pour développer le plugin, voir [Tester en local](#-tester-en-local).
 | `/create-api-specs [projet] [CTR-xx…]` | Produit ou met à jour les spécifications machine des contrats listés au § 5.2 de l'architecture, dans `docs/contrats/` : OpenAPI 3.1 (API HTTP exposée, et chaque API tierce appelée, limitée aux opérations utilisées), AsyncAPI 3.0 (événements, file de messages), JSON Schema (format de fichier). Extraites du code pour un projet existant (preuve `x-source` par opération), conçues d'après le PRD pour un cadrage neuf (`x-besoins`, propositions `x-propose`). Validées par `redocly` / `asyncapi` ; l'index du § 5.2 est mis à jour. Toutes les specs ont une URL de base absolue et des exemples de corps, pour être importées dans Postman telles quelles. |
 | `/review-specs [projet]` | Fait relire **les documents de spec** (PRD, architecture, ADR, glossaire, backlog et stories) par l'agent `evaluator`, qui liste tout ce qu'une IA de dev devrait deviner ou inventer : manques, contradictions, exigences invérifiables, traçabilité cassée. Résultat dans `docs/eval/`. Lancé automatiquement à la fin de chaque itération de `/create-project` et de `/create-ticket` ; à la main, il sert à relire de nouveau après une modification. |
 | `/confluence-sync [projet] [--refaire]` | Publie la documentation sur Confluence sous une page racine `<Projet>`. **Tout le dossier `docs/` est publié, et lui seul** (sauf `docs/eval/`) : ni le code, ni le backlog, ni aucun fichier hors de `docs/`. Un agent **`layout`** lit ces documents (PRD, architecture, glossaire, ADR, spécifications, et tout autre document de `docs/`) et l'arborescence cible du plugin (`templates/confluence-tree.md`) : page d'arrivée (présentation, sommaire, démarrage en local, variables d'environnement, structure du code, conventions, tests), Vue d'ensemble, Fonctionnel, Architecture découpée en Données, Flux, Interfaces (une page Contrat par spécification, spécification complète dans un bloc repliable) et Services externes, Décisions (ADR) — projet cadré seulement —, Points ouverts et dette, Glossaire. Il décide du contenu de chaque page (sélection, déplacement, fusion des doublons, nettoyage des traces du processus) sans rien inventer ni perdre d'identifiant. Le script `skills/confluence-sync/resolve.py` vérifie son rendu (aucun identifiant métier perdu, ni « § », ni titre numéroté, ni identifiant de processus), résout les liens entre pages et insère les spécifications depuis le disque, calcule les empreintes, prépare les lots et fusionne les résultats. La mise en page n'est refaite que si les sources ont changé (ou avec `--refaire`). Publication en deux temps : squelette des pages nouvelles et remise en ordre de l'arborescence, puis corps publiés **en parallèle** par des agents `publisher` (6 au maximum), avec le statut natif de chaque page. Diagrammes Mermaid rendus en PNG (mermaid-cli, en parallèle) et insérés en image avec leur source repliée ; chaque spécification est jointe à sa page Contrat (fichier téléchargeable). L'envoi des fichiers passe par `resolve.py upload`, qui contrôle chaque commande d'envoi (fichier de `docs/`, adresse du site, options) avant de l'exécuter ; il exige une règle de permission pour cette seule commande (voir `skills/confluence-sync/SKILL.md`). Le backlog et les stories restent dans le dépôt. Proposé à la fin du cadrage (validation du backlog). Nécessite le connecteur Atlassian, et mermaid-cli pour les images. |
-| `/install-deps` | Vérifie les dépendances (python3 et PyYAML, curl, unzip, Node.js, mermaid-cli, son navigateur headless et ses bibliothèques système, linters OpenAPI / AsyncAPI, uv et Code Review Graph, connecteur Atlassian) et installe celles qui manquent, avec votre accord. Proposé par `/confluence-sync` si le rendu des diagrammes est impossible, par `/reverse-engineer` si Code Review Graph manque, et par `/create-api-specs` si le linter manque. |
+| `/install-deps` | Vérifie les dépendances (python3, PyYAML pour relire les specs de contrats, curl, unzip, Node.js, mermaid-cli, son navigateur headless et ses bibliothèques système, linters OpenAPI / AsyncAPI, uv et Code Review Graph, connecteur Atlassian) et installe celles qui manquent, avec votre accord. Proposé par `/confluence-sync` si le rendu des diagrammes est impossible, par `/reverse-engineer` si Code Review Graph manque, et par `/create-api-specs` si le linter manque. |
 | `/compare-runs [projets…]` | Compare **plusieurs runs du même cadrage** (ex. `pomodoro-v1`, `pomodoro-v2`, générés à partir de la même idée) sur la qualité (points d'ombre), le temps et le coût, à partir de leurs métriques. Sert à mesurer l'effet d'un changement du plugin. |
 | `/validate-step [projet]` | Valide **l'étape de cadrage en cours** : le document courant et passe à l'étape suivante (PRD → architecture → ADR → backlog), puis génère les documents suivants (architecture + ADR + index, puis backlog + stories) avec les propositions de l'agent, marquées *(proposé)* ; ils seront évalués à la fin du `/create-project` suivant. Avertit s'il reste des points bloquants, sans jamais bloquer. |
-| `/create-ticket <description \| clé Jira> [chemins…]` | Cadre une **évolution** (feature ou bugfix) sur un projet déjà documenté (cadré avec `/create-project` ou rétro-documenté avec `/reverse-engineer`), en spec-driven. La demande vient d'une description libre ou d'un ticket Jira (lu avec le connecteur Atlassian, sans le modifier). Même boucle que `/create-project` : analyse d'impact par l'agent de cadrage (type feature / bug ; pour un bug, écart à la spec ou cas non spécifié ; documents et identifiants touchés) → vos choix → mise à jour **en place** des documents touchés (PRD, architecture, nouvel ADR si une décision est prise, glossaire) et création des US du ticket au statut `à cadrer` → eval du ticket → relancer / valider le ticket (US `à faire`, ADR `accepté`, ADR remplacé déclassé) / arrêter / abandonner (les documents reviennent à l'instantané pris au début du ticket). Une US existante touchée par le ticket repasse `à cadrer` jusqu'à la validation. |
+| `/create-ticket <description \| clé Jira> [chemins…]` | Cadre une **évolution** (feature ou bugfix) sur un projet déjà documenté (cadré avec `/create-project` ou rétro-documenté avec `/reverse-engineer`), en spec-driven. La demande vient d'une description libre ou d'un ticket Jira (lu avec le connecteur Atlassian, sans le modifier). Même boucle que `/create-project` : analyse d'impact par l'agent de cadrage (type feature / bug ; pour un bug, écart à la spec ou cas non spécifié ; documents et identifiants touchés) → vos choix → mise à jour **en place** des documents touchés (PRD, architecture, nouvel ADR si une décision est prise, glossaire) et création des US du ticket au statut `à cadrer` → eval du ticket → relancer / valider le ticket (US `à faire`, ADR `accepté`, ADR remplacé déclassé) / arrêter / abandonner (les documents reviennent à l'instantané pris au début du ticket, evals conservés ; l'abandon est tracé `ABANDON <ID>` et refusé si un autre ticket a écrit depuis). Une US existante touchée par le ticket repasse `à cadrer` jusqu'à la validation. |
 
 ## 🛠 Stack / technos
 
@@ -91,7 +97,7 @@ Pour développer le plugin, voir [Tester en local](#-tester-en-local).
 |---|---|---|
 | **Plateforme** | [Claude Code](https://docs.claude.com/en/docs/claude-code) — plugin : 9 skills (slash commands), 5 agents, 2 hooks (`SubagentStop`, `Stop`), marketplace | `.claude-plugin/`, `skills/`, `agents/`, `hooks/` |
 | **Modèles** | Claude Opus : cadrage (`scoping`), évaluation (`evaluator`), cartographie et rédaction rétro (`researcher`), mise en page Confluence (`layout`) · Claude Sonnet : explorations du code (`researcher`), publication (`publisher`) | `agents/` |
-| **Scripts** | Python 3 (+ PyYAML) | `hooks/metrics.py` (métriques, coûts, comparaison de runs), `skills/reverse-engineer/graph_digest.py` (digest du graphe), `skills/reverse-engineer/check_refs.py` (vérification des preuves `fichier:ligne`), `skills/review-specs/check_tasks.py` (contrôle des plans de tâches), `skills/confluence-sync/resolve.py` (contrôle du rendu, liens, empreintes, lots) |
+| **Scripts** | Python 3 (bibliothèque standard) | `hooks/metrics.py` (métriques, coûts, comparaison de runs), `skills/reverse-engineer/graph_digest.py` (digest du graphe), `skills/reverse-engineer/check_refs.py` (vérification des preuves `fichier:ligne`), `skills/review-specs/check_tasks.py` (contrôle des plans de tâches), `skills/confluence-sync/resolve.py` (contrôle du rendu, liens, empreintes, lots) |
 | **Analyse de code** | [Code Review Graph](https://github.com/tirth8205/code-review-graph) (installé avec `uv`) | `/reverse-engineer` |
 | **Contrats** | OpenAPI 3.1, AsyncAPI 3.0, JSON Schema — validés par `redocly` et `asyncapi` | `/create-api-specs` → `docs/contrats/` |
 | **Diagrammes** | Mermaid, rendus en PNG par mermaid-cli (Node.js, Chrome headless via puppeteer) | `/confluence-sync` |
@@ -141,7 +147,7 @@ Les documents existants passés en argument (sources) sont mémorisés dans le c
 ### 📊 Métriques
 
 Deux hooks remplissent `<projet>/.sohub-plugin/metrics.jsonl` à partir des transcripts (jamais à partir de ce que disent les agents) :
-- `SubagentStop` : une ligne par intervention d'agent — acteur, modèle · effort, mode, étape, tâche, début, fin, durée, tours, outils, tokens (entrée, cache écrit, cache lu, sortie), coût d'entrée, coût de sortie, et la qualité (points d'ombre et bloquants du dernier eval) pour les evals ;
+- `SubagentStop` : une ligne par intervention d'un agent du plugin — acteur, modèle · effort, mode, étape, tâche, début, fin, durée, tours, outils, tokens (entrée, cache écrit, cache lu, sortie), coût d'entrée, coût de sortie, et la qualité (points d'ombre et bloquants du dernier eval) pour les evals ;
 - `Stop` : le travail de l'orchestrateur (session principale) pendant le tour, découpé par itération.
 
 `metrics.md` est régénéré à chaque ajout : résumé du run, tableau par itération (durée, coûts, points ouverts), moyennes par acteur, mode et modèle, et le détail des interventions. Les coûts sont estimés aux tarifs de l'API Anthropic (table `PRICES` de `hooks/metrics.py`, à mettre à jour si les tarifs changent).
@@ -177,6 +183,199 @@ Pour comparer la qualité, le temps et le coût, génère le même projet dans p
 - Le statut de chaque US vit uniquement dans le tableau du backlog ; celui de chaque tâche, dans le plan de tâches de sa story.
 - `skills/review-specs/check_tasks.py` vérifie mécaniquement les plans (dépendances sans cycle et vers des vagues antérieures, fichiers écrits deux fois dans une vague, CA sans tâche, sous-tâches, lots d'US) avant l'évaluateur ; ses anomalies sont bloquantes à l'étape BACKLOG et pour un ticket (contrôle « prêt à paralléliser »).
 - À l'étape BACKLOG, l'évaluateur fait le contrôle « prêt à développer ». Sont bloquants : un EF V1 sans US, une US sans besoin, une dépendance cassée.
+
+## 🎫 Scénarios `/create-ticket`
+
+Tous les chemins possibles d'un ticket, tels que les décrit `skills/create-ticket/SKILL.md`. Dans les diagrammes, `TK-001` représente l'identifiant du ticket, qui peut aussi être une clé Jira.
+
+| # | Scénario | Déclencheur | Issue |
+|---|----------|-------------|-------|
+| 1 | Refus ou avertissement au démarrage | pas de projet, cadrage en cours, ticket validé ou abandonné, demande vide, autre ticket ouvert | arrêt, question ou avertissement |
+| 2 | Entrée par Jira | clé `PROJ-123` dans l'argument | demande lue telle quelle, ou texte collé, ou arrêt |
+| 3 | Itération nominale (feature, bug écart à la spec, bug cas non spécifié) | description ou ticket Jira | documents mis à jour, US `à cadrer`, eval |
+| 4 | Relancer, arrêter, reprendre | choix de fin de tour, puis `/create-ticket TK-001` | nouvelle itération, à partir du dernier eval du ticket |
+| 5 | Validation (avec ou sans avertissement) | « Valider le ticket » | US `à faire`, lots, ADR `accepté`, instantané supprimé |
+| 6 | Abandon (restauration possible ou non) | « Abandonner le ticket » | documents restaurés (evals conservés, ligne `ABANDON`), ou ticket d'annulation proposé |
+
+**1. Démarrage : refus et avertissements**
+
+```mermaid
+sequenceDiagram
+    actor U as Utilisateur
+    participant O as /create-ticket
+    participant D as Projet (docs/, .sohub-plugin/)
+    U->>O: /create-ticket demande [chemins…]
+    O->>D: cherche docs/prd.md (argument, répertoire courant, sous-dossiers directs)
+    alt Aucun projet
+        O-->>U: propose /create-project ou /reverse-engineer, puis s'arrête
+    else Plusieurs projets
+        O->>U: lequel ?
+    end
+    O->>D: lit statut et origine des documents
+    opt Cadrage en cours (ni rétro, ni tout validé)
+        O-->>U: propose de finir le cadrage avec /create-project, puis s'arrête
+    end
+    O->>D: identifiant : reprise, clé Jira ou TK-NNN suivant
+    alt Ticket déjà validé (VALIDATION TK-001 au journal)
+        O-->>U: ticket clos, propose d'en ouvrir un nouveau, puis s'arrête
+    else Demande vide
+        O->>U: décrire la feature ou le bug, ou donner une clé Jira
+    end
+    opt Plusieurs demandes sans lien
+        O->>U: propose des tickets séparés
+    end
+    opt Ticket abandonné (ABANDON TK-001 au journal)
+        O-->>U: clé Jira : propose de le recommencer. TK-NNN : propose un nouveau ticket
+    end
+    opt Un autre ticket est ouvert (tickets/TK-000/)
+        O->>U: l'abandon par restauration deviendra impossible. Continuer / Arrêter
+    end
+    O->>D: réserve tickets/TK-001/ (mkdir sans -p, numéro suivant si pris)
+    O->>D: instantané docs/, backlog.md, stories/ dans tickets/TK-001/
+```
+
+**2. Entrée par un ticket Jira**
+
+```mermaid
+sequenceDiagram
+    actor U as Utilisateur
+    participant O as /create-ticket
+    participant J as Jira (connecteur Atlassian)
+    U->>O: /create-ticket PROJ-123
+    O->>U: Lire le ticket Jira PROJ-123 / Ce n'est pas une clé Jira
+    alt Ce n'est pas une clé
+        Note over O: le texte reste une description, identifiant TK-NNN
+    else Clé confirmée
+        O->>O: ToolSearch « atlassian jira »
+        alt Connecteur absent ou non authentifié
+            O->>U: Coller le texte du ticket / Connecter Atlassian / Arrêter
+        else Connecteur disponible
+            O->>J: cloudId (confluence.json, sinon getAccessibleAtlassianResources)
+            O->>J: getJiraIssue PROJ-123
+            alt Lecture réussie
+                J-->>O: titre, type, description, critères, commentaires
+                Note over O: demande = texte Jira recopié tel quel, ticket jamais modifié
+            else Échec (introuvable, accès refusé, mauvais site)
+                J-->>O: erreur
+                O->>U: message d'erreur, puis Coller le texte / Connecter Atlassian / Arrêter
+            end
+        end
+    end
+```
+
+**3. Itération nominale : feature ou bug**
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Utilisateur
+    participant O as /create-ticket
+    participant S as Agent scoping
+    participant D as Projet (docs/, .sohub-plugin/)
+    participant R as /review-specs
+    O->>S: ANALYSE — TICKET (ticket-rules.md, demande, chemins, sources)
+    S-->>O: reformulation, type, qualification, impact, points B / F / C / X
+    O->>U: reformulation et impact à confirmer, type feature / bug
+    opt Bug
+        O->>U: qualification : écart à la spec / cas non spécifié
+    end
+    O->>U: points bloquants, puis zones de flou (4 questions par appel)
+    U-->>O: décisions, ou « non tranché »
+    O->>S: RÉDACTION — TICKET (décisions + contenu accepté, impact confirmé)
+    alt Feature
+        S->>D: PRD (CU, EF, RG, ENF), architecture, ADR « proposé », glossaire
+    else Bug, écart à la spec
+        S->>D: PRD inchangé, l'US cite l'EF ou le critère violé
+    else Bug, cas non spécifié
+        S->>D: PRD complété par la RG ou le critère tranché
+    end
+    S->>D: US du ticket « à cadrer » + stories (Ticket : TK-001)
+    S->>D: US existantes « à faire » impactées → « à cadrer »
+    Note over S,D: US bug : vague 1 = test de non-régression qui échoue tant que le bug existe
+    S-->>O: compte rendu (15 lignes au plus)
+    O->>R: projet --ticket TK-001
+    R->>D: check_tasks.py --ticket → tasks-TK-001.md
+    R->>D: evaluator → docs/eval/horodatage.md (étape TICKET TK-001)
+    R-->>O: synthèse : points d'ombre, bloquants du ticket
+    O->>U: résumé, puis Relancer / Valider / Arrêter / Abandonner
+```
+
+**4. Relancer, arrêter, reprendre**
+
+```mermaid
+sequenceDiagram
+    actor U as Utilisateur
+    participant O as /create-ticket
+    participant S as Agent scoping
+    participant R as /review-specs
+    loop Tant que l'utilisateur choisit « Relancer la boucle »
+        O->>S: ANALYSE, à partir du dernier eval TICKET TK-001
+        S-->>O: points restants
+        O->>U: questions
+        U-->>O: décisions
+        O->>S: RÉDACTION
+        O->>R: eval --ticket TK-001
+        O->>U: Relancer / Valider / Arrêter / Abandonner
+    end
+    U-->>O: Arrêter là
+    O-->>U: les US restent « à cadrer », reprise avec /create-ticket TK-001
+    Note over U,O: plus tard, dans une autre session
+    U->>O: /create-ticket TK-001 [réponses]
+    O->>O: reprise détectée (tickets/TK-001/ ou lignes TK-001 aux journaux)
+    alt Interrompu avant la rédaction, et le message répond aux points
+        O->>S: RÉDACTION directement
+    else Sinon
+        O->>S: ANALYSE à partir du dernier eval TICKET TK-001
+    end
+```
+
+**5. Validation du ticket**
+
+```mermaid
+sequenceDiagram
+    actor U as Utilisateur
+    participant O as /create-ticket
+    participant D as Projet (docs/, .sohub-plugin/)
+    U-->>O: Valider le ticket
+    O->>D: lit le dernier eval TICKET TK-001, tasks-TK-001.md, les marqueurs du ticket
+    opt Eval absent ou périmé, bloquants, questions bloquantes, [À CLARIFIER], *(proposé)*, anomalies de tâches
+        O->>U: avertissement : Valider quand même / Revenir au cadrage
+        opt Revenir au cadrage
+            Note over O: retour au choix de fin de tour, rien n'est modifié
+        end
+    end
+    O->>D: backlog : US du ticket et US impactées « à cadrer » → « à faire »
+    O->>D: backlog : lots du ticket ajoutés à « Parallélisation des US »
+    O->>D: ADR du ticket « proposé » → « accepté », ADR remplacé → « remplacé par »
+    O->>D: journaux modifiés : ligne VALIDATION TK-001
+    O->>D: check_tasks.py (contrôle des lots ajoutés)
+    O->>D: supprime tickets/TK-001/
+    O-->>U: lot et tâches de vague 1 prenables, rappel /create-api-specs et /confluence-sync
+```
+
+**6. Abandon du ticket**
+
+```mermaid
+sequenceDiagram
+    actor U as Utilisateur
+    participant O as /create-ticket
+    participant D as Projet (docs/, .sohub-plugin/)
+    U-->>O: Abandonner le ticket
+    O->>D: instantané présent ? autre dossier tickets/ ? autre ticket aux journaux, absent de l'instantané ?
+    alt Instantané absent, autre ticket ouvert, ou autre ticket écrit depuis l'instantané
+        O-->>U: restauration impossible. Liste des éléments TK-001, propose un ticket d'annulation
+    else Instantané utilisable
+        O->>U: ce qui sera perdu (evals conservés). Abandonner et restaurer / Garder le ticket
+        alt Abandonner et restaurer
+            O->>D: docs/ (sauf docs/eval/), backlog.md, stories/ remplacés par tickets/TK-001/
+            O->>D: supprime tasks-TK-001.md et tickets/TK-001/
+            O->>D: journal : ligne ABANDON TK-001
+            O-->>U: documents revenus à leur état d'avant le ticket
+        else Garder le ticket
+            Note over O: retour au choix de fin de tour
+        end
+    end
+```
 
 ## 🗂 Structure du plugin
 

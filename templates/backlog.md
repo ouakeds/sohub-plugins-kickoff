@@ -49,7 +49,7 @@ Règles :
 
 ## 4. Couverture des exigences
 
-<!-- Chaque EF V1 du PRD est couvert par au moins une US. -->
+<!-- Chaque EF V1 du PRD est couvert par au moins une US. Projet rétro (origine: rétro) : seuls les EF créés ou modifiés par un ticket figurent ici ; les EF existants, déjà implémentés dans le code, n'ont pas d'US. -->
 
 | EF | US |
 |----|----|

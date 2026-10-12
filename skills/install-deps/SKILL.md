@@ -24,7 +24,7 @@ Configuration de rendu : `${CLAUDE_SKILL_DIR}/puppeteer-config.json`
 
 | Dépendance | Sert à | Vérification | Obligatoire |
 |---|---|---|---|
-| `python3` (dans le `PATH`, y compris sous Windows natif) | hooks de métriques, `/compare-runs`, script de `/confluence-sync` | `command -v python3 && python3 --version` (Windows natif : `where python3`, hors alias du Store) | oui |
+| `python3` (dans le `PATH`, y compris sous Windows natif) | hooks de métriques, `/compare-runs`, scripts de `/reverse-engineer` (`graph_digest.py`, `check_refs.py`), de `/review-specs` et `/create-ticket` (`check_tasks.py`) et de `/confluence-sync` (`resolve.py`) ; bibliothèque standard seulement | `command -v python3 && python3 --version` (Windows natif : `where python3`, hors alias du Store) | oui |
 | PyYAML (module Python `yaml`) | lecture des spécifications de `docs/contrats/` (`/create-api-specs`) | `python3 -c "import yaml; print(yaml.__version__)"` | pour les contrats (contournable par `npx js-yaml`) |
 | `curl` | dépôt des images et des spécifications sur Confluence (`/confluence-sync`), téléchargements | `curl --version` | pour la synchro |
 | `unzip` (Linux) | extraction du navigateur par puppeteer | `unzip -v` | pour les diagrammes (contournable, voir 3) |

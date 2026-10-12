@@ -303,18 +303,22 @@ def is_plugin_project(path):
     return bool(path) and os.path.isdir(os.path.join(path, "docs")) and os.path.isdir(os.path.join(path, ".sohub-plugin"))
 
 
-# Une itération commence à chaque analyse du cadrage, ou à chaque série d'explorations d'un projet existant
-# (les explorations parallèles et la cartographie qui les consolide forment une seule itération).
+# Une itération commence à chaque analyse du cadrage, à chaque import de documents existants, ou à chaque série
+# d'explorations d'un projet existant (les explorations parallèles, la cartographie qui les consolide et la rédaction
+# rétro qui suit forment une seule itération ; une rédaction rétro reprise seule en ouvre une).
 SERIES = ("EXPLORATION", "CARTOGRAPHIE")
 
 
 def iteration_starts(records):
-    """Débuts d'itération : une ANALYSE, ou la première EXPLORATION / CARTOGRAPHIE d'une série."""
+    """Débuts d'itération : une ANALYSE, un IMPORT, la première EXPLORATION / CARTOGRAPHIE d'une série, ou une
+    RÉTRO qui ne suit ni une cartographie ni une autre RÉTRO (reprise de la rédaction)."""
     agents = sorted((r for r in records if r.get("type") == "agent"), key=lambda r: r["debut"])
     starts, previous = [], None
     for r in agents:
         mode = r.get("mode")
-        if mode == "ANALYSE" or (mode in SERIES and previous not in SERIES) or (mode == "EXPLORATION" and previous == "CARTOGRAPHIE"):
+        if (mode in ("ANALYSE", "IMPORT") or (mode in SERIES and previous not in SERIES)
+                or (mode == "EXPLORATION" and previous == "CARTOGRAPHIE")
+                or (mode == "RÉTRO" and previous not in ("CARTOGRAPHIE", "RÉTRO"))):
             starts.append(parse_ts(r["debut"]))
         previous = mode
     return starts
@@ -322,7 +326,7 @@ def iteration_starts(records):
 
 def parse_task(description, prompt):
     """Mode et étape à partir du titre imposé par les skills (« Cadrage ANALYSE — PRD », « Eval — PRD »,
-    « Recherche EXPLORATION — USAGES », « Recherche CARTOGRAPHIE — REVERSE », « Recherche RÉTRO — COMPOSANTS »)."""
+    « Recherche EXPLORATION — USAGES », « Recherche CARTOGRAPHIE — REVERSE », « Recherche RÉTRO — PRD », « Cadrage ANALYSE — TICKET TK-001 »)."""
     mode, etape = None, None
     match = re.match(r"\s*(?:(?:Cadrage|Recherche)\s+)?(ANALYSE|RÉDACTION|REDACTION|PROPOSITION|IMPORT|EXPLORATION|CARTOGRAPHIE|RÉTRO|RETRO|Eval)"
                      r"\b\s*[—-]\s*(?:après\s+)?(\w+)", description or "", re.I)
@@ -333,7 +337,7 @@ def parse_task(description, prompt):
         match = re.search(r"Mode\s*:?\s*`?(ANALYSE|RÉDACTION|PROPOSITION|IMPORT|EXPLORATION|CARTOGRAPHIE|RÉTRO)", prompt)
         mode = match.group(1) if match else None
     if not etape:
-        match = re.search(r"Étape[^:\n]*:\s*(PRD|ARCHITECTURE|ADR|BACKLOG|COMPOSANTS|FLUX)", prompt)
+        match = re.search(r"Étape[^:\n]*:\s*(PRD|ARCHITECTURE|ADR|BACKLOG|TICKET)", prompt)
         etape = match.group(1) if match else None
     return mode, etape
 

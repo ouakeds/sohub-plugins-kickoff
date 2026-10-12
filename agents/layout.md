@@ -8,7 +8,7 @@ effort: high
 
 Tu transformes les documents d'un projet en **pages Confluence** pour l'orchestrateur `/confluence-sync`. Tu ne publies rien et tu ne parles jamais à l'utilisateur. Tu ne modifies **jamais** les documents du projet ni `confluence.json` : tu écris uniquement dans `<projet>/.sohub-plugin/sync/`.
 
-**Seul `docs/` est publié, et en entier.** Tu ne lis que les documents de la liste fournie (tout `docs/` sauf `docs/eval/`) et le gabarit : jamais le code, le backlog, les stories, `.sohub-plugin/` ni un fichier hors de `docs/`. Chaque document de la liste nourrit au moins une page (cité dans ses `sources`) ; chaque spécification de `docs/contrats/` a sa page Contrat avec son marqueur `{{spec:docs/contrats/<fichier>}}`.
+**Seul `docs/` est publié, et en entier.** Tu ne lis que les documents de la liste fournie (tout `docs/` sauf `docs/eval/`) et le gabarit : jamais le code, le backlog, les stories, le reste de `.sohub-plugin/` ni un fichier hors de `docs/` ; seule exception, tes propres fichiers de travail de `.sohub-plugin/sync/` (dont `sync/previous/`) quand l'orchestrateur te les indique. Chaque document de la liste nourrit au moins une page (cité dans ses `sources`) ; chaque spécification de `docs/contrats/` a sa page Contrat avec son marqueur `{{spec:docs/contrats/<fichier>}}`.
 
 ## Entrées
 

@@ -284,5 +284,38 @@ class RenderCompare(Base):
         self.assertNotIn(b"Traceback", result.stderr)
 
 
+class TestTaskParsing(unittest.TestCase):
+    def test_titles_imposed_by_skills(self):
+        cases = {
+            "Cadrage ANALYSE — PRD": ("ANALYSE", "PRD"),
+            "Cadrage RÉDACTION — TICKET TK-001": ("RÉDACTION", "TICKET"),
+            "Eval — TICKET PROJ-12": ("EVAL", "TICKET"),
+            "Recherche RÉTRO — ARCHITECTURE": ("RÉTRO", "ARCHITECTURE"),
+        }
+        for title, expected in cases.items():
+            self.assertEqual(metrics.parse_task(title, ""), expected, title)
+
+    def test_step_fallback_from_prompt(self):
+        self.assertEqual(metrics.parse_task("autre", "Mode : RÉTRO\nÉtape : ARCHITECTURE"), ("RÉTRO", "ARCHITECTURE"))
+        self.assertEqual(metrics.parse_task("autre", "Étape : COMPOSANTS"), (None, None))
+
+
+class TestIterationStarts(unittest.TestCase):
+    def starts(self, modes):
+        records = [{"type": "agent", "mode": m, "debut": f"2026-10-12T10:{i:02d}:00Z"} for i, m in enumerate(modes)]
+        found = metrics.iteration_starts(records)
+        return [i for i, r in enumerate(records) if metrics.parse_ts(r["debut"]) in found]
+
+    def test_import_starts_an_iteration(self):
+        self.assertEqual(self.starts(["IMPORT", "EVAL", "ANALYSE", "RÉDACTION", "EVAL"]), [0, 2])
+
+    def test_reverse_run_is_one_iteration(self):
+        modes = ["EXPLORATION", "EXPLORATION", "EXPLORATION", "CARTOGRAPHIE", "RÉTRO", "RÉTRO"]
+        self.assertEqual(self.starts(modes), [0])
+
+    def test_resumed_retro_starts_an_iteration(self):
+        self.assertEqual(self.starts(["ANALYSE", "EVAL", "RÉTRO", "RÉTRO"]), [0, 2])
+
+
 if __name__ == "__main__":
     unittest.main()
