@@ -1,6 +1,6 @@
 {
   "name": "sohub-plugins-spec",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "description": "Cadrage de projet : de l'idée au PRD, à l'architecture, aux ADR et au backlog de user stories, par itérations questions/réponses et évaluations des points d'ombre ; rétro-documentation d'un projet existant à partir de son code.",
   "author": {
     "name": "Sabri",

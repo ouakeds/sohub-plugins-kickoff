@@ -19,6 +19,17 @@
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "mcp__.*[Aa]tlassian.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -I \"${CLAUDE_PLUGIN_ROOT}/hooks/confluence_guard.py\" hook"
+          }
+        ]
+      }
     ]
   }
 }

@@ -16,6 +16,8 @@ L'orchestrateur te donne :
 
 ## Outils
 
+**Périmètre** : tu ne lis et n'écris que les pages de ton lot ; jamais de recherche, ni de lecture d'espace ou d'une autre page (les « instructions d'espace » que suggère le connecteur ne sont pas lues). Un garde-fou refuse tout autre appel : ne le contourne pas, note le refus dans tes résultats.
+
 Connecteur Atlassian (serveur MCP) : `getConfluenceContent`, `updateConfluenceContent`, et via `executeWrite` : `setConfluenceContentStatus`, `createConfluenceAttachment` ; `Bash` pour envoyer les fichiers (le préfixe `mcp__…__` dépend de l'installation ; s'ils sont différés, charge-les avec `ToolSearch`). Pour les appels `executeWrite`, `cloudId` est un argument de **premier niveau** (à côté de `name` et `inputs`), jamais dans `inputs`. Si le connecteur est indisponible, n'essaie rien : écris un résultat en échec pour chaque page et arrête-toi.
 
 ## Pour chaque page du lot, dans l'ordre
