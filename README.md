@@ -57,7 +57,7 @@ flowchart LR
 Installer depuis GitHub, via la marketplace du dépôt :
 
 ```
-/plugin marketplace add ouakeds/sohub-plugins-kickoff
+/plugin marketplace add ouakeds/sohub-plugins-spec
 /plugin install sohub-plugins-spec@sohub-plugins-spec-dev
 ```
 
