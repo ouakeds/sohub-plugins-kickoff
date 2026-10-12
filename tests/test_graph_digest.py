@@ -1,4 +1,4 @@
-"""Tests de skills/reverse/graph_digest.py (digest du graphe Code Review Graph).
+"""Tests de skills/reverse-engineer/graph_digest.py (digest du graphe Code Review Graph).
 
 Fonctions pures importées depuis le chemin du script ; bout en bout sur un graph.db minimal construit ici
 (même schéma que code-review-graph 2.3, réduit aux colonnes lues par le digest).
@@ -13,7 +13,7 @@ import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(ROOT, "skills", "reverse", "graph_digest.py")
+SCRIPT = os.path.join(ROOT, "skills", "reverse-engineer", "graph_digest.py")
 
 spec = importlib.util.spec_from_file_location("graph_digest", SCRIPT)
 gd = importlib.util.module_from_spec(spec)

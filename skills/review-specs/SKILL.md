@@ -1,5 +1,5 @@
 ---
-name: eval
+name: review-specs
 description: Passe d'évaluation du cadrage de projet — fait auditer PRD, architecture, ADR et backlog d'US par l'agent évaluateur, qui liste tous les points d'ombre dans un nouveau fichier horodaté de docs/eval/. Lancé automatiquement en fin d'itération de /create-project et de /create-ticket (--ticket <ID>), ou à la main pour réévaluer les documents.
 argument-hint: "[chemin du projet] [--ticket <ID>]"
 allowed-tools: Agent, AskUserQuestion, Read, Glob, Bash(date:*), Bash(mkdir:*), Bash(python3:*)

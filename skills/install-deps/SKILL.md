@@ -1,6 +1,6 @@
 ---
-name: install
-description: Vérifie les dépendances du plugin de cadrage (python3 et PyYAML, curl, unzip, Node.js, mermaid-cli et son navigateur headless, linters OpenAPI / AsyncAPI, uv et Code Review Graph, connecteur Atlassian) et installe celles qui manquent, avec l'accord de l'utilisateur. Proposé par /confluence-sync quand le rendu des diagrammes est impossible, par /reverse quand Code Review Graph manque, par /openapi quand le linter manque, ou lancé à la main. À utiliser quand l'utilisateur veut vérifier ou installer les dépendances du plugin.
+name: install-deps
+description: Vérifie les dépendances du plugin de cadrage (python3 et PyYAML, curl, unzip, Node.js, mermaid-cli et son navigateur headless, linters OpenAPI / AsyncAPI, uv et Code Review Graph, connecteur Atlassian) et installe celles qui manquent, avec l'accord de l'utilisateur. Proposé par /confluence-sync quand le rendu des diagrammes est impossible, par /reverse-engineer quand Code Review Graph manque, par /create-api-specs quand le linter manque, ou lancé à la main. À utiliser quand l'utilisateur veut vérifier ou installer les dépendances du plugin.
 argument-hint: ""
 allowed-tools: AskUserQuestion, Bash, Read, ToolSearch
 ---
@@ -24,17 +24,17 @@ Configuration de rendu : `${CLAUDE_SKILL_DIR}/puppeteer-config.json`
 
 | Dépendance | Sert à | Vérification | Obligatoire |
 |---|---|---|---|
-| `python3` (dans le `PATH`, y compris sous Windows natif) | hooks de métriques, `/compare`, script de `/confluence-sync` | `command -v python3 && python3 --version` (Windows natif : `where python3`, hors alias du Store) | oui |
-| PyYAML (module Python `yaml`) | lecture des spécifications de `docs/contrats/` (`/openapi`) | `python3 -c "import yaml; print(yaml.__version__)"` | pour les contrats (contournable par `npx js-yaml`) |
+| `python3` (dans le `PATH`, y compris sous Windows natif) | hooks de métriques, `/compare-runs`, script de `/confluence-sync` | `command -v python3 && python3 --version` (Windows natif : `where python3`, hors alias du Store) | oui |
+| PyYAML (module Python `yaml`) | lecture des spécifications de `docs/contrats/` (`/create-api-specs`) | `python3 -c "import yaml; print(yaml.__version__)"` | pour les contrats (contournable par `npx js-yaml`) |
 | `curl` | dépôt des images et des spécifications sur Confluence (`/confluence-sync`), téléchargements | `curl --version` | pour la synchro |
 | `unzip` (Linux) | extraction du navigateur par puppeteer | `unzip -v` | pour les diagrammes (contournable, voir 3) |
 | Node.js ≥ 18 et `npm` (Linux sous WSL) | exécuter mermaid-cli | `command -v node npm npx` (aucun chemin sous `/mnt/`), puis `node --version`, `npm --version` | pour les diagrammes |
 | `mmdc` (`@mermaid-js/mermaid-cli`) | rendu des diagrammes Mermaid en PNG | `command -v mmdc` (pas sous `/mnt/`), puis `mmdc --version` | pour les diagrammes |
 | navigateur headless de mermaid-cli (`chrome-headless-shell`, version attendue par mermaid-cli) | rendu effectif | exécutable présent dans `~/.cache/puppeteer/chrome-headless-shell/linux-<version>/chrome-headless-shell-linux64/`, puis rendu de test (voir 4) | pour les diagrammes |
 | bibliothèques système du navigateur (Linux) | lancer le navigateur | `ldd <exécutable du navigateur> \| grep "not found"` vide | pour les diagrammes |
-| `redocly` (`@redocly/cli`) et `asyncapi` (`@asyncapi/cli`) | validation des spécifications OpenAPI et AsyncAPI (`/openapi`) | `command -v redocly asyncapi` (pas sous `/mnt/`), puis `redocly --version`, `asyncapi --version` (ou `npx --yes @redocly/cli --version`, avec un `npx` Linux) | pour `/openapi` (sinon spécifications non validées) |
-| `uv` | installer Code Review Graph | `uv --version` | pour `/reverse` |
-| `code-review-graph` (avec l'extra `communities`) | cartographie du code d'un projet existant | `code-review-graph --version` | pour `/reverse` |
+| `redocly` (`@redocly/cli`) et `asyncapi` (`@asyncapi/cli`) | validation des spécifications OpenAPI et AsyncAPI (`/create-api-specs`) | `command -v redocly asyncapi` (pas sous `/mnt/`), puis `redocly --version`, `asyncapi --version` (ou `npx --yes @redocly/cli --version`, avec un `npx` Linux) | pour `/create-api-specs` (sinon spécifications non validées) |
+| `uv` | installer Code Review Graph | `uv --version` | pour `/reverse-engineer` |
+| `code-review-graph` (avec l'extra `communities`) | cartographie du code d'un projet existant | `code-review-graph --version` | pour `/reverse-engineer` |
 | connecteur Atlassian (MCP) | `/confluence-sync` | présence d'outils Atlassian (`ToolSearch` « atlassian confluence ») | pour la synchro |
 
 ## Procédure

@@ -1,6 +1,6 @@
 ---
 name: create-ticket
-description: Cadrage d'une évolution (feature ou bugfix) sur un projet déjà documenté, en spec-driven — à partir d'une description libre ou d'un ticket Jira, l'agent de cadrage analyse l'impact, l'utilisateur tranche, puis les documents existants sont mis à jour en place (PRD, architecture, nouvel ADR si une décision est prise, glossaire) et les US/stories du ticket sont créées au statut « à cadrer » ; eval automatique, puis relancer / valider le ticket (US « à faire ») / arrêter. À utiliser quand l'utilisateur veut cadrer une nouvelle fonctionnalité, une modification ou un bug sur un projet cadré avec /create-project ou rétro-documenté avec /reverse.
+description: Cadrage d'une évolution (feature ou bugfix) sur un projet déjà documenté, en spec-driven — à partir d'une description libre ou d'un ticket Jira, l'agent de cadrage analyse l'impact, l'utilisateur tranche, puis les documents existants sont mis à jour en place (PRD, architecture, nouvel ADR si une décision est prise, glossaire) et les US/stories du ticket sont créées au statut « à cadrer » ; eval automatique, puis relancer / valider le ticket (US « à faire ») / arrêter. À utiliser quand l'utilisateur veut cadrer une nouvelle fonctionnalité, une modification ou un bug sur un projet cadré avec /create-project ou rétro-documenté avec /reverse-engineer.
 argument-hint: "<description ou clé Jira> [chemins de documents…]"
 allowed-tools: Agent, Skill, AskUserQuestion, Read, Glob, Grep, Edit, ToolSearch, Bash(date:*), Bash(mkdir:*), Bash(cp:*), Bash(rm:*), mcp__claude_ai_Atlassian_MCP__getAccessibleAtlassianResources, mcp__claude_ai_Atlassian_MCP__getJiraIssue
 ---
@@ -23,7 +23,7 @@ Pour trouver `<projet>` :
 1. si `$ARGUMENTS` contient le chemin d'un dossier de projet existant (qui contient `docs/prd.md`), utilise-le ;
 2. sinon, si `docs/prd.md` existe dans le répertoire courant, le projet est le répertoire courant ;
 3. sinon, cherche les `*/docs/prd.md` dans les sous-dossiers directs : un seul → c'est le projet ; plusieurs → demande lequel via `AskUserQuestion` ;
-4. sinon, aucun projet n'existe : dis-le, propose `/create-project` (projet neuf) ou `/reverse` (projet existant) et arrête-toi.
+4. sinon, aucun projet n'existe : dis-le, propose `/create-project` (projet neuf) ou `/reverse-engineer` (projet existant) et arrête-toi.
 
 **Prérequis** : le projet est **documenté**, c'est-à-dire soit **rétro-documenté** (`docs/prd.md` et `docs/architecture.md` portent `origine: rétro`, quel que soit leur statut ; le backlog peut manquer : il sera créé pour le ticket), soit **entièrement cadré** (`docs/prd.md`, `docs/architecture.md`, `docs/adr/index.md` et `.sohub-plugin/backlog.md` sont `validé`). Sinon (cadrage en cours), dis-le : un ticket écrirait dans des documents que la suite du cadrage régénère ; propose de finir le cadrage avec `/create-project` et arrête-toi.
 
@@ -49,10 +49,10 @@ Cet identifiant sert partout : points des journaux (`<ID>/B1`), origine des ques
 
 ## Lecture d'un ticket Jira
 
-1. Charge les outils Atlassian avec `ToolSearch` (« atlassian jira »). S'il n'y en a pas, ou qu'il n'expose qu'un outil `authenticate` : dis-le, propose via `AskUserQuestion` « Coller le texte du ticket » (l'utilisateur le donne via « Other ») / « Installer avec /install » (→ invoque le skill `sohub-plugins-spec:install`) / « Arrêter ».
+1. Charge les outils Atlassian avec `ToolSearch` (« atlassian jira »). S'il n'y en a pas, ou qu'il n'expose qu'un outil `authenticate` : dis-le, propose via `AskUserQuestion` « Coller le texte du ticket » (l'utilisateur le donne via « Other ») / « Installer avec /install-deps » (→ invoque le skill `sohub-plugins-spec:install-deps`) / « Arrêter ».
 2. `cloudId` : celui de `<projet>/.sohub-plugin/confluence.json` s'il existe ; sinon `getAccessibleAtlassianResources` (plusieurs sites → demande lequel).
 3. `getJiraIssue` : titre, type (bug, story, tâche…), description, critères d'acceptation éventuels et commentaires. Ce texte, recopié tel quel, est la **demande** ; la description libre éventuelle s'y ajoute. Lecture seule : ne modifie jamais le ticket Jira.
-4. Si `getJiraIssue` échoue (ticket introuvable, accès refusé, mauvais site), dis-le avec le message d'erreur et propose les mêmes choix qu'au point 1 (« Coller le texte du ticket » / « Installer avec /install » / « Arrêter »).
+4. Si `getJiraIssue` échoue (ticket introuvable, accès refusé, mauvais site), dis-le avec le message d'erreur et propose les mêmes choix qu'au point 1 (« Coller le texte du ticket » / « Installer avec /install-deps » / « Arrêter »).
 
 ## Itération
 
@@ -79,7 +79,7 @@ Cet identifiant sert partout : points des journaux (`<ID>/B1`), origine des ques
    - les chemins des sources éventuelles, à ajouter au champ `sources:` du PRD.
 
    L'agent de rédaction **n'a pas vu le rapport d'analyse**. Quand l'utilisateur choisit une option ou accepte une recommandation (« (a) », « ta reco », « OK »), recopie entre crochets, juste après ses mots, le contenu exact de ce qu'il a accepté, repris du rapport d'analyse. Transmets aussi l'**impact** confirmé (documents et identifiants à créer ou modifier).
-5. **Eval automatique.** Invoque le skill `sohub-plugins-spec:eval` (outil `Skill`) avec en argument le chemin absolu de `<projet>` suivi de `--ticket <ID>`.
+5. **Eval automatique.** Invoque le skill `sohub-plugins-spec:review-specs` (outil `Skill`) avec en argument le chemin absolu de `<projet>` suivi de `--ticket <ID>`.
 6. **Fin de tour.** Résume en quelques lignes : documents modifiés, éléments ajoutés ou modifiés (identifiants), US du ticket avec, pour chacune, son nombre de tâches, de vagues et de tâches parallélisables au maximum (section « Parallélisation » de la story), nombre de points d'ombre restants sur le ticket (dont bloquants) et les plus importants. Puis propose via `AskUserQuestion` :
    - **Relancer la boucle** → reprends à l'étape 2 (le nouvel eval sert de base aux questions) ;
    - **Valider le ticket** → étape 7 ;
@@ -94,9 +94,9 @@ Cet identifiant sert partout : points des journaux (`<ID>/B1`), origine des ques
      - pour chaque ADR du ticket au statut `proposé`, passe-le à `accepté` (dans le fichier de l'ADR et dans le tableau de l'index) et remplis « Tranchée par l'utilisateur le » avec la date (« validation du ticket <ID> ») si elle vaut « non tranchée » ; si cet ADR **remplace** un ADR existant (champ « Remplace » ou contexte), passe l'ancien à `remplacé par ADR-NNNN` dans son fichier et dans l'index ;
      - ajoute à chaque journal des décisions modifié par le ticket une ligne `| <date> | VALIDATION <ID> | Ticket validé par l'utilisateur<, propositions restantes acceptées en bloc> | <éléments du ticket> |`.
    - Ne touche à rien d'autre (ni aux champs `statut` des documents, ni au contenu, ni aux plans de tâches).
-   - Lance `python3 -I ${CLAUDE_SKILL_DIR}/../eval/check_tasks.py <projet>` (sans `--ticket`) pour contrôler les lots que tu viens d'ajouter ; signale ses anomalies sur les lots du ticket (elles ne bloquent pas).
+   - Lance `python3 -I ${CLAUDE_SKILL_DIR}/../review-specs/check_tasks.py <projet>` (sans `--ticket`) pour contrôler les lots que tu viens d'ajouter ; signale ses anomalies sur les lots du ticket (elles ne bloquent pas).
    - Supprime l'instantané : `rm -r <projet>/.sohub-plugin/tickets/<ID>`.
-   - Annonce la validation, puis indique ce qui est prenable selon les « Règles de suivi » du backlog : le lot du ticket, ses US et les tâches de leur vague 1 (réalisables en parallèle). Si l'index des contrats (architecture § 5.2) contient des lignes « À produire (/openapi) » ajoutées par le ticket, rappelle que `/openapi` produit leurs spécifications. Rappelle que `/confluence-sync` permet de publier la documentation mise à jour.
+   - Annonce la validation, puis indique ce qui est prenable selon les « Règles de suivi » du backlog : le lot du ticket, ses US et les tâches de leur vague 1 (réalisables en parallèle). Si l'index des contrats (architecture § 5.2) contient des lignes « À produire (/create-api-specs) » ajoutées par le ticket, rappelle que `/create-api-specs` produit leurs spécifications. Rappelle que `/confluence-sync` permet de publier la documentation mise à jour.
 
 8. **Abandon du ticket** (geste volontaire, confirmé).
    - Si `.sohub-plugin/tickets/<ID>/` n'existe pas, ou si un autre ticket a été commencé après celui-ci (autre dossier dans `.sohub-plugin/tickets/` plus récent), la restauration automatique écraserait d'autres travaux : dis-le, liste les éléments que tracent les lignes `<ID>` et `<ID>/…` des journaux et les stories `Ticket : <ID>`, et propose `/create-ticket` avec une demande d'annulation ; arrête-toi.

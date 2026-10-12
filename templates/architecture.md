@@ -11,7 +11,7 @@ Règles :
 - Une section sans contenu tranché s'écrit « Aucun » ou renvoie vers une question ouverte (« Voir QA-02 »). Jamais de ligne de tableau vide.
 - Marqueur en ligne : à l'endroit exact du texte concerné par un point non tranché, écrire [À CLARIFIER : QA-xx], en plus de la ligne QA-xx dans « Questions ouvertes ». Le marqueur est retiré quand la question est tranchée.
 - Identifiants jamais renumérotés ni réutilisés.
-- Document COURT : c'est une vue d'ensemble, pas une spécification. Tableaux plutôt que blocs de puces ; une à deux phrases par cellule. Le détail fonctionnel (déroulé des cas d'usage, écrans, règles) reste dans le PRD ; le détail des API (opérations, schémas, erreurs) va dans les spécifications de docs/contrats/ produites par /openapi. Ne recopie ni l'un ni l'autre ici.
+- Document COURT : c'est une vue d'ensemble, pas une spécification. Tableaux plutôt que blocs de puces ; une à deux phrases par cellule. Le détail fonctionnel (déroulé des cas d'usage, écrans, règles) reste dans le PRD ; le détail des API (opérations, schémas, erreurs) va dans les spécifications de docs/contrats/ produites par /create-api-specs. Ne recopie ni l'un ni l'autre ici.
 - Projet existant (`origine: rétro`) : une preuve `fichier:ligne` par élément (ligne de tableau, entité, flux), dans la colonne « Preuve » ou en fin de cellule — pas une par phrase. Les chemins de fichiers s'écrivent entre accents graves (`app/__init__.py:31`).
 - Questions ouvertes : 10 au maximum, les bloquantes d'abord ; ne garder que celles dont la réponse changerait l'architecture. Un doute mineur (valeur par défaut, détail de configuration) se signale en « Point d'attention », sans question. -->
 
@@ -27,7 +27,7 @@ flowchart LR
 
 ## 2. Composants
 
-<!-- Un composant = un ensemble cohérent de responsabilités, identifiable dans le code (dossiers ou fichiers) ; viser 4 à 12 composants. Une ligne par composant, même tableau pour un cadrage neuf (/create-project) et pour un projet existant (/reverse). Cadrage neuf : l'emplacement est celui prévu par la structure du code (§ 7). Projet existant : emplacement constaté, avec sa preuve. Les entités (§ 3), flux (§ 4) et contrats (§ 5.2) ne sont pas décrits ici : on y renvoie par leur identifiant. Un paragraphe d'introduction de 3 phrases au plus peut précéder le tableau (comment le code est découpé). -->
+<!-- Un composant = un ensemble cohérent de responsabilités, identifiable dans le code (dossiers ou fichiers) ; viser 4 à 12 composants. Une ligne par composant, même tableau pour un cadrage neuf (/create-project) et pour un projet existant (/reverse-engineer). Cadrage neuf : l'emplacement est celui prévu par la structure du code (§ 7). Projet existant : emplacement constaté, avec sa preuve. Les entités (§ 3), flux (§ 4) et contrats (§ 5.2) ne sont pas décrits ici : on y renvoie par leur identifiant. Un paragraphe d'introduction de 3 phrases au plus peut précéder le tableau (comment le code est découpé). -->
 
 | ID | Composant | Rôle (1 à 2 phrases) | Emplacement | Dépend de | Besoins PRD | Points d'attention |
 |----|-----------|----------------------|-------------|-----------|-------------|--------------------|
@@ -83,11 +83,11 @@ flowchart LR
 
 ### 5.2 Contrats
 
-<!-- Index des contrats : une ligne par API exposée, API tierce appelée, flux d'événements, ou format de fichier échangé. Le détail (opérations, schémas, erreurs, exemples) n'est PAS écrit ici : il vit dans une spécification machine de docs/contrats/ (OpenAPI 3.1 pour une API HTTP, AsyncAPI 3.0 pour des événements / messages, JSON Schema pour un format de fichier), produite et tenue à jour par le skill /openapi. Chaque service externe (§ 5.1) a aussi sa spécification, limitée aux opérations que le projet utilise (`x-sens: consommé`), pour être importable dans Postman. L'infrastructure (base de données, file, SMTP) n'est pas un contrat, sauf le schéma de la base (type SQL, renvoi aux migrations). « À produire (/openapi) » tant que la spécification n'existe pas. « Aucun » si sans objet. -->
+<!-- Index des contrats : une ligne par API exposée, API tierce appelée, flux d'événements, ou format de fichier échangé. Le détail (opérations, schémas, erreurs, exemples) n'est PAS écrit ici : il vit dans une spécification machine de docs/contrats/ (OpenAPI 3.1 pour une API HTTP, AsyncAPI 3.0 pour des événements / messages, JSON Schema pour un format de fichier), produite et tenue à jour par le skill /create-api-specs. Chaque service externe (§ 5.1) a aussi sa spécification, limitée aux opérations que le projet utilise (`x-sens: consommé`), pour être importable dans Postman. L'infrastructure (base de données, file, SMTP) n'est pas un contrat, sauf le schéma de la base (type SQL, renvoi aux migrations). « À produire (/create-api-specs) » tant que la spécification n'existe pas. « Aucun » si sans objet. -->
 
 | ID | Contrat | Type | Producteur → consommateurs | Spécification | Versionnement | Flux |
 |----|---------|------|----------------------------|---------------|---------------|------|
-| CTR-01 | <nom> | API REST / événements / fichier / API tierce / SQL | <composant ou service> → <…> | `docs/contrats/<nom>.openapi.yaml` / À produire (/openapi) / migrations (SQL) | <stratégie de compatibilité> | FL-xx |
+| CTR-01 | <nom> | API REST / événements / fichier / API tierce / SQL | <composant ou service> → <…> | `docs/contrats/<nom>.openapi.yaml` / À produire (/create-api-specs) / migrations (SQL) | <stratégie de compatibilité> | FL-xx |
 
 ## 6. Stack technique
 
@@ -99,7 +99,7 @@ flowchart LR
 
 ### Choix techniques constatés (projet existant)
 
-<!-- Rempli seulement pour un projet existant documenté par /reverse (`origine: rétro`) : un choix structurant constaté dans le code par ligne (CH-xx de la cartographie), avec sa preuve, en une phrase. C'est un constat, pas une décision : les décisions ont déjà été prises, on ne les rouvre pas et on n'en demande pas la raison (pas de question ouverte, pas d'ADR). Dans un cadrage neuf : « Aucun ». -->
+<!-- Rempli seulement pour un projet existant documenté par /reverse-engineer (`origine: rétro`) : un choix structurant constaté dans le code par ligne (CH-xx de la cartographie), avec sa preuve, en une phrase. C'est un constat, pas une décision : les décisions ont déjà été prises, on ne les rouvre pas et on n'en demande pas la raison (pas de question ouverte, pas d'ADR). Dans un cadrage neuf : « Aucun ». -->
 
 | ID | Choix constaté | Preuve |
 |----|----------------|--------|

@@ -1,4 +1,4 @@
-"""Tests de skills/eval/check_tasks.py (contrôle des plans de tâches des stories et des lots du backlog)."""
+"""Tests de skills/review-specs/check_tasks.py (contrôle des plans de tâches des stories et des lots du backlog)."""
 import os
 import re
 import subprocess
@@ -7,7 +7,7 @@ import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(ROOT, "skills", "eval", "check_tasks.py")
+SCRIPT = os.path.join(ROOT, "skills", "review-specs", "check_tasks.py")
 TEMPLATE = os.path.join(ROOT, "templates", "story.md")
 
 HEADER = ("| ID | Tâche | Vague | Dépend de | Fichiers écrits | Lit | CA | Terminé quand | Statut | Agent |\n"

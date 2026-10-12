@@ -1,5 +1,5 @@
 ---
-name: compare
+name: compare-runs
 description: Compare plusieurs runs de cadrage (dossiers de projets générés à partir de la même idée) sur la qualité, le temps et le coût, à partir de leurs .sohub-plugin/metrics.jsonl. À utiliser quand l'utilisateur veut comparer des runs, des versions du plugin ou des modèles.
 argument-hint: "<dossier projet> <dossier projet> …"
 allowed-tools: Bash(python3:*), Glob, Read

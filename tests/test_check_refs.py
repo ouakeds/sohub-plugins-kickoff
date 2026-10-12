@@ -1,4 +1,4 @@
-"""Tests de skills/reverse/check_refs.py (vérification des preuves des documents rétro)."""
+"""Tests de skills/reverse-engineer/check_refs.py (vérification des preuves des documents rétro)."""
 import os
 import subprocess
 import sys
@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(ROOT, "skills", "reverse", "check_refs.py")
+SCRIPT = os.path.join(ROOT, "skills", "reverse-engineer", "check_refs.py")
 
 FRONT = "---\nstatut: brouillon\norigine: rétro\n---\n"
 

@@ -19,7 +19,7 @@ Règles :
 
 ## Journal des décisions
 
-<!-- Une ligne par terme ajouté ou modifié, la plus récente en bas. Ne jamais supprimer de ligne. Origine : identifiant du point tranché (B1, F2…), SOURCE, IDÉE, PROP (proposition de l'agent) ou RÉTRO (déduit du code d'un projet existant par /reverse). -->
+<!-- Une ligne par terme ajouté ou modifié, la plus récente en bas. Ne jamais supprimer de ligne. Origine : identifiant du point tranché (B1, F2…), SOURCE, IDÉE, PROP (proposition de l'agent) ou RÉTRO (déduit du code d'un projet existant par /reverse-engineer). -->
 
 | Date | Origine | Terme | Changement |
 |------|---------|-------|------------|

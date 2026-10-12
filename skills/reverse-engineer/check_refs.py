@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Vérifie les preuves des documents rétro-générés par /reverse (remplace l'eval).
+"""Vérifie les preuves des documents rétro-générés par /reverse-engineer (remplace l'eval).
 
 Usage : check_refs.py <dépôt>
 

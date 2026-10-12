@@ -515,7 +515,7 @@ def cmd_rendre(p, config):
             if not os.path.isfile(dg['png']) or os.path.getmtime(dg['png']) < os.path.getmtime(dg['mmd'])]
     base = mmdc_cmd()
     if todo and not base:
-        print('MMDC ABSENT : diagrammes non rendus (proposer /install)'); return 1
+        print('MMDC ABSENT : diagrammes non rendus (proposer /install-deps)'); return 1
 
     def run(dg):
         if os.path.isfile(dg['png']):  # jamais d'image périmée si le rendu échoue

@@ -45,7 +45,7 @@ Il n'y a **pas** de fichier d'état. L'état se relit dans le champ `statut` (`b
 
 **Une itération s'exécute d'une traite, de l'étape 1 à l'étape 6.** Ne termine jamais ton tour avant l'étape 6 : chaque question à l'utilisateur passe par `AskUserQuestion` (qui attend sa réponse sans interrompre l'itération), jamais par une question écrite en fin de message. Invoque toujours les agents **au premier plan** (jamais en arrière-plan) et attends leur rapport avant de continuer. Donne à chaque appel `Agent` la description indiquée (`Cadrage ANALYSE — <ÉTAPE>`, `Cadrage RÉDACTION — <ÉTAPE>`) : elle sert de titre de tâche dans `<projet>/.sohub-plugin/metrics.md`, tenu automatiquement par un hook. Si le document de l'étape n'existe pas encore, ajoute ` (création)` à la fin de la description (ex. `Cadrage ANALYSE — PRD (création)`) : l'agent analyse alors l'idée, pas un document existant.
 
-**Eval manquant.** Si le document de l'étape courante existe et qu'il a déjà un eval de cette étape, mais que le dernier est antérieur à son champ `maj` (une rédaction s'est interrompue avant l'eval), lance d'abord l'eval (étape 5) puis enchaîne à l'étape 2 : l'analyse doit partir des points d'ombre du document tel qu'il est. S'il n'a aucun eval de cette étape (cas normal juste après `/validate`), l'analyse part des propositions du document.
+**Eval manquant.** Si le document de l'étape courante existe et qu'il a déjà un eval de cette étape, mais que le dernier est antérieur à son champ `maj` (une rédaction s'est interrompue avant l'eval), lance d'abord l'eval (étape 5) puis enchaîne à l'étape 2 : l'analyse doit partir des points d'ombre du document tel qu'il est. S'il n'a aucun eval de cette étape (cas normal juste après `/validate-step`), l'analyse part des propositions du document.
 
 **Reprise.** Si l'itération précédente s'est interrompue avant la rédaction et que le message de l'utilisateur répond aux points en suspens, ne relance pas l'analyse : reprends directement à l'étape 4 avec les décisions déjà recueillies plus ses réponses.
 
@@ -70,10 +70,10 @@ Il n'y a **pas** de fichier d'état. L'état se relit dans le champ `statut` (`b
    - les chemins des nouvelles sources éventuelles, à ajouter au champ `sources:` du PRD.
 
    L'agent de rédaction **n'a pas vu le rapport d'analyse**. Quand l'utilisateur choisit une option, accepte une recommandation ou une proposition (« (a) », « ta reco », « OK »), recopie entre crochets, juste après ses mots, le contenu exact de ce qu'il a accepté, repris du rapport d'analyse. Exemple : `« (a) » [un tour = 1 effort + 1 repos, sans repos après le dernier effort]`.
-5. **Eval automatique.** Invoque le skill `sohub-plugins-spec:eval` (outil `Skill`) en lui passant en argument le chemin absolu de `<projet>`.
+5. **Eval automatique.** Invoque le skill `sohub-plugins-spec:review-specs` (outil `Skill`) en lui passant en argument le chemin absolu de `<projet>`.
 6. **Fin de tour.** Résume en quelques lignes : ce qui a été écrit, le nombre de points d'ombre restants (dont bloquants) et les plus importants. Puis propose via `AskUserQuestion` :
    - **Relancer la boucle** → reprends à l'étape 2 (le nouvel eval sert de base aux questions) ;
-   - **Valider l'étape** → invoque le skill `sohub-plugins-spec:validate` en lui passant en argument le chemin absolu de `<projet>` ; il valide, génère les documents des étapes suivantes (propositions de l'agent), sans relancer l'eval. L'itération s'arrête là ;
+   - **Valider l'étape** → invoque le skill `sohub-plugins-spec:validate-step` en lui passant en argument le chemin absolu de `<projet>` ; il valide, génère les documents des étapes suivantes (propositions de l'agent), sans relancer l'eval. L'itération s'arrête là ;
    - **Arrêter là** → rappelle que les documents restent en l'état et qu'on reprend avec `/create-project` (depuis le même répertoire), puis arrête-toi.
 
 Il n'y a jamais de blocage automatique : c'est toujours l'utilisateur qui décide de relancer, valider ou arrêter.
