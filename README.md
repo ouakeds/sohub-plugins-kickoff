@@ -1,10 +1,77 @@
-# sohub-plugins-kickoff
+<div align="center">
+
+# 🧭 sohub-plugins-kickoff
+
+**De l'idée au backlog prêt à coder, ou du code existant à une doc Confluence sourcée ligne par ligne.**
+
+*Plugin Claude Code de cadrage de projet : PRD, architecture, ADR, user stories, contrats OpenAPI et publication Confluence, pour que l'IA qui développera n'ait rien à deviner ni à inventer.*
+
+[![Version](https://img.shields.io/badge/version-0.11.0-blue)](.claude-plugin/plugin.json)
+[![Licence MIT](https://img.shields.io/badge/licence-MIT-green)](LICENSE)
+[![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://docs.claude.com/en/docs/claude-code/plugins)
+[![Python 3](https://img.shields.io/badge/Python-3-3776AB?logo=python&logoColor=white)](#-stack--technos)
+[![OpenAPI 3.1](https://img.shields.io/badge/OpenAPI-3.1-6BA539?logo=openapiinitiative&logoColor=white)](#-stack--technos)
+[![AsyncAPI 3.0](https://img.shields.io/badge/AsyncAPI-3.0-000000?logo=asyncapi&logoColor=white)](#-stack--technos)
+[![Confluence](https://img.shields.io/badge/Confluence-sync-0052CC?logo=confluence&logoColor=white)](#-skills)
+[![Langue](https://img.shields.io/badge/langue-français-lightgrey)](#)
+
+[Démarrage rapide](#-démarrage-rapide) · [Skills](#-skills) · [Stack](#-stack--technos) · [Documents produits](#-documents-produits) · [Conception](#-conception) · [Licence](#-licence)
+
+</div>
+
+---
+
+## ✨ En bref
 
 Plugin Claude Code de **cadrage de projet**. On part d'une idée (ex. une app Pomodoro) et on écrit tout noir sur blanc — PRD, architecture, ADR, puis backlog de user stories — pour que l'IA qui développera l'application n'ait rien à deviner ni à inventer.
 
 Il documente aussi un **projet existant** par reverse engineering (`/reverse`) : le code est cartographié avec [Code Review Graph](https://github.com/tirth8205/code-review-graph), trois agents de recherche l'explorent en parallèle (structure, usages, données) et proposent une structure de documentation, puis des agents rédigent en parallèle les mêmes documents (sans ADR : sur un projet existant, les décisions sont déjà prises), chaque affirmation sourcée dans le code.
 
-## Skills
+| | Projet neuf — `/kickoff` | Projet existant — `/reverse` |
+|---|---|---|
+| **Point de départ** | Une idée, éventuellement des documents (diagrammes, specs, notes) | Un dépôt de code |
+| **Méthode** | Boucle questions → choix → rédaction → eval | Graphe du code → 3 explorations parallèles → cartographie → rédaction parallèle |
+| **Documents** | PRD, architecture, ADR, glossaire, backlog et stories | PRD, architecture, glossaire (mêmes structures, sans ADR) |
+| **Garantie** | Chaque décision répond à un besoin écrit du PRD | Chaque affirmation porte sa preuve `fichier:ligne`, vérifiée par script |
+| **Ensuite** | `/openapi` · `/sync` vers Confluence | `/openapi` · `/kickoff` pour affiner · `/sync` vers Confluence |
+
+```mermaid
+flowchart LR
+    I([💡 Idée]) --> K["/kickoff"]
+    C([📦 Code existant]) --> R["/reverse"]
+    K <--> E["/eval"]
+    K --> V["/validate"]
+    V -->|PRD → archi → ADR → backlog| K
+    R --> D[(docs/<br/>PRD · architecture<br/>ADR · glossaire)]
+    V --> D
+    D --> O["/openapi"]
+    O --> S["/sync"]
+    D --> S
+    S --> CF([📘 Confluence])
+    V --> B[(backlog + stories)]
+    B --> DEV([🤖 IA de dev])
+```
+
+## 🚀 Démarrage rapide
+
+Installer depuis GitHub, via la marketplace du dépôt :
+
+```
+/plugin marketplace add ouakeds/sohub-plugins-kickoff
+/plugin install sohub-plugins-kickoff@sohub-plugins-kickoff-dev
+```
+
+Puis, dans Claude Code :
+
+```
+/doctor                          # vérifie et installe les dépendances
+/kickoff une app Pomodoro        # cadrer un projet neuf
+/reverse ./mon-depot             # documenter un projet existant
+```
+
+Pour développer le plugin, voir [Tester en local](#-tester-en-local).
+
+## 🧩 Skills
 
 | Commande | Rôle |
 |----------|------|
@@ -12,12 +79,25 @@ Il documente aussi un **projet existant** par reverse engineering (`/reverse`) :
 | `/reverse [dépôt]` | Documente un projet existant. Construit (ou met à jour) le graphe du code avec Code Review Graph, en tire un digest (communautés, flux d'exécution, points d'entrée, dépendances, zones à risque), puis **trois agents de recherche explorent le code en parallèle** (Sonnet ; structure et composants ; usages, CU et glossaire ; données, contrats, contraintes et choix techniques ; le digest répartit les fichiers à lire entre eux) et un quatrième (Opus) consolide leurs résultats en une **cartographie**, un index court : identifiants des composants, cas d'utilisation, données, contrats, choix techniques constatés, glossaire, zones d'incertitude ; le détail reste dans les explorations. Après validation de cette structure par vos choix, **deux agents rédigent en parallèle** le PRD d'une part, architecture + glossaire d'autre part (composants en tableau, flux d'intégration, index des contrats), avec **exactement la même structure qu'un projet cadré avec `/kickoff`**, en `brouillon`, chaque élément suivi de sa preuve `*(déduit : fichier:ligne)*` ; ce que le code ne dit pas devient question ouverte (10 au plus par document, les autres restent dans la cartographie). **Pas d'ADR ni de décision à trancher** : les décisions sont déjà prises ; les choix techniques constatés sont décrits dans l'architecture (§ 6), sans question sur leur raison. Un ADR ne naît ensuite, avec `/kickoff`, que d'une nouvelle décision (changer un choix existant). **Pas d'eval** (les incohérences sont celles du code existant) : un script vérifie que chaque preuve `fichier:ligne` existe. Puis `/openapi` pour les spécifications des API, `/kickoff` pour affiner ou `/sync` pour publier. N'écrase jamais un document existant. |
 | `/openapi [projet] [CTR-xx…]` | Produit ou met à jour les spécifications machine des contrats listés au § 5.2 de l'architecture, dans `docs/contrats/` : OpenAPI 3.1 (API HTTP exposée, et chaque API tierce appelée, limitée aux opérations utilisées), AsyncAPI 3.0 (événements, file de messages), JSON Schema (format de fichier). Extraites du code pour un projet existant (preuve `x-source` par opération), conçues d'après le PRD pour un cadrage neuf (`x-besoins`, propositions `x-propose`). Validées par `redocly` / `asyncapi` ; l'index du § 5.2 est mis à jour. Toutes les specs ont une URL de base absolue et des exemples de corps, pour être importées dans Postman telles quelles. |
 | `/eval` | Relance à la main une passe d'évaluation des points d'ombre. |
+| `/validate` | Valide le document courant et passe à l'étape suivante (PRD → architecture → ADR → backlog), puis génère les documents suivants (architecture + ADR + index, puis backlog + stories) avec les propositions de l'agent, marquées *(proposé)* ; ils seront évalués à la fin du `/kickoff` suivant. Avertit s'il reste des points bloquants, sans jamais bloquer. |
 | `/sync [projet] [--refaire]` | Publie la documentation sur Confluence sous une page racine `<Projet>`. Un agent **`mise-en-page`** lit les documents (PRD, architecture, glossaire, ADR, spécifications) et l'arborescence cible du plugin (`templates/confluence-arborescence.md`) : page d'arrivée (présentation, sommaire, démarrage en local, variables d'environnement, structure du code, conventions, tests), Vue d'ensemble, Fonctionnel, Architecture découpée en Données, Flux, Interfaces (une page Contrat par spécification, spécification complète dans un bloc repliable) et Services externes, Décisions (ADR) — projet cadré seulement —, Points ouverts et dette, Glossaire. Il décide du contenu de chaque page (sélection, déplacement, fusion des doublons, nettoyage des traces du processus) sans rien inventer ni perdre d'identifiant. Le script `skills/sync/resoudre.py` vérifie son rendu (aucun identifiant métier perdu, ni « § », ni titre numéroté, ni identifiant de processus), résout les liens entre pages et insère les spécifications depuis le disque, calcule les empreintes, prépare les lots et fusionne les résultats. La mise en page n'est refaite que si les sources ont changé (ou avec `--refaire`). Publication en deux temps : squelette des pages nouvelles et remise en ordre de l'arborescence, puis corps publiés **en parallèle** par des agents `publication` (6 au maximum), avec le statut natif de chaque page. Diagrammes Mermaid rendus en PNG (mermaid-cli, en parallèle) et insérés en image avec leur source repliée ; chaque spécification est jointe à sa page Contrat (fichier téléchargeable). L'envoi des fichiers exige une règle de permission pour la commande `curl` d'envoi vers Confluence (voir `skills/sync/SKILL.md`). Le backlog et les stories restent dans le dépôt. Proposé en fin de `/validate`. Nécessite le connecteur Atlassian, et mermaid-cli pour les images. |
 | `/doctor` | Vérifie les dépendances (python3 et PyYAML, curl, unzip, Node.js, mermaid-cli, son navigateur headless et ses bibliothèques système, linters OpenAPI / AsyncAPI, uv et Code Review Graph, connecteur Atlassian) et installe celles qui manquent, avec votre accord. Proposé par `/sync` si le rendu des diagrammes est impossible, par `/reverse` si Code Review Graph manque, et par `/openapi` si le linter manque. |
 | `/compare [projets…]` | Compare plusieurs runs du même projet (qualité, temps, coût) à partir de leurs métriques. |
-| `/validate` | Valide le document courant et passe à l'étape suivante (PRD → architecture → ADR → backlog), puis génère les documents suivants (architecture + ADR + index, puis backlog + stories) avec les propositions de l'agent, marquées *(proposé)* ; ils seront évalués à la fin du `/kickoff` suivant. Avertit s'il reste des points bloquants, sans jamais bloquer. |
 
-## Documents produits
+## 🛠 Stack / technos
+
+| Domaine | Technologies | Où |
+|---|---|---|
+| **Plateforme** | [Claude Code](https://docs.claude.com/en/docs/claude-code) — plugin : 8 skills (slash commands), 5 agents, 2 hooks (`SubagentStop`, `Stop`), marketplace | `.claude-plugin/`, `skills/`, `agents/`, `hooks/` |
+| **Modèles** | Claude Sonnet (explorations parallèles), Claude Opus (consolidation de la cartographie) | `agents/` |
+| **Scripts** | Python 3 (+ PyYAML) | `hooks/metrics.py` (métriques, coûts, comparaison de runs), `skills/reverse/graph_digest.py` (digest du graphe), `skills/reverse/check_refs.py` (vérification des preuves `fichier:ligne`), `skills/sync/resoudre.py` (contrôle du rendu, liens, empreintes, lots) |
+| **Analyse de code** | [Code Review Graph](https://github.com/tirth8205/code-review-graph) (installé avec `uv`) | `/reverse` |
+| **Contrats** | OpenAPI 3.1, AsyncAPI 3.0, JSON Schema — validés par `redocly` et `asyncapi` | `/openapi` → `docs/contrats/` |
+| **Diagrammes** | Mermaid, rendus en PNG par mermaid-cli (Node.js, Chrome headless via puppeteer) | `/sync` |
+| **Publication** | Confluence, via le connecteur Atlassian (MCP) et `curl` pour les pièces jointes | `/sync` |
+| **Formats lus** | Texte, Markdown, Mermaid, PlantUML, PDF, images | `/kickoff [chemins…]` |
+
+## 📂 Documents produits
 
 Chaque projet cadré a son propre dossier, créé par `/kickoff` dans le répertoire courant (ex. `pomodoro/`). Le nom du répertoire courant n'est jamais utilisé comme information sur le projet.
 
@@ -47,13 +127,15 @@ Les documents existants passés en argument (sources) sont mémorisés dans le c
 
 **Projet existant.** Pour `/reverse`, le projet est le dépôt de code lui-même : les documents sont écrits dans son `docs/`. Ils portent `origine: rétro` ; le champ `sources:` du PRD cite le dépôt avec sa branche et son commit. Les agents ne relisent pas tout le dépôt ensuite : seulement les fichiers cités par les marqueurs `*(déduit : …)*`, dont `check_refs.py` vérifie l'existence en fin de `/reverse` (et l'évaluateur par sondage, lors d'un `/kickoff`). `docs/adr/index.md` reste vide : les choix constatés sont dans la table « Choix techniques constatés » de l'architecture. Nécessite Code Review Graph (`uv tool install "code-review-graph[communities]"`, ou `/doctor`).
 
-Le backlog est généré à la validation des ADR, affiné par `/kickoff`, puis validé. Ensuite, l'IA de dev suit ses « Règles de suivi » : elle prend la première US P1 `à faire` dont les dépendances sont `fait`, passe son statut à `en cours` → `en revue` → `fait` dans le tableau du backlog et coche les tâches de la story.
+**Backlog.** Le backlog est généré à la validation des ADR, affiné par `/kickoff`, puis validé. Ensuite, l'IA de dev suit ses « Règles de suivi » : elle prend la première US P1 `à faire` dont les dépendances sont `fait`, passe son statut à `en cours` → `en revue` → `fait` dans le tableau du backlog et coche les tâches de la story.
 
-Pas de fichier d'état : l'étape courante se déduit du champ `statut` (`brouillon` / `validé`) en tête de `prd.md`, `architecture.md`, `adr/index.md` et `.sohub-plugin/backlog.md`. Le champ `maj` donne la date de dernière rédaction ; il permet de savoir si le dernier eval est à jour.
+**Pas de fichier d'état** : l'étape courante se déduit du champ `statut` (`brouillon` / `validé`) en tête de `prd.md`, `architecture.md`, `adr/index.md` et `.sohub-plugin/backlog.md`. Le champ `maj` donne la date de dernière rédaction ; il permet de savoir si le dernier eval est à jour.
 
-Règles communes aux documents : les identifiants (EF-xx, CU-xx, US-xxx, E-xxx…) ne sont jamais renumérotés ni réutilisés, un point non tranché porte un marqueur `[À CLARIFIER : Q-xx]` à l'endroit concerné en plus de sa question ouverte, une question tranchée est intégrée au document puis retirée, et chaque décision de l'utilisateur est tracée dans un journal des décisions. L'architecture passe trois contrôles de conception (simplicité, anti-abstraction, intégration d'abord) ; tout écart est justifié dans un « Suivi de la complexité ».
+**Règles communes** aux documents : les identifiants (EF-xx, CU-xx, US-xxx, E-xxx…) ne sont jamais renumérotés ni réutilisés, un point non tranché porte un marqueur `[À CLARIFIER : Q-xx]` à l'endroit concerné en plus de sa question ouverte, une question tranchée est intégrée au document puis retirée, et chaque décision de l'utilisateur est tracée dans un journal des décisions. L'architecture passe trois contrôles de conception (simplicité, anti-abstraction, intégration d'abord) ; tout écart est justifié dans un « Suivi de la complexité ».
 
-**Métriques.** Deux hooks remplissent `<projet>/.sohub-plugin/metrics.jsonl` à partir des transcripts (jamais à partir de ce que disent les agents) :
+### 📊 Métriques
+
+Deux hooks remplissent `<projet>/.sohub-plugin/metrics.jsonl` à partir des transcripts (jamais à partir de ce que disent les agents) :
 - `SubagentStop` : une ligne par intervention d'agent — acteur, modèle · effort, mode, étape, tâche, début, fin, durée, tours, outils, tokens (entrée, cache écrit, cache lu, sortie), coût d'entrée, coût de sortie, et la qualité (points d'ombre et bloquants du dernier eval) pour les evals ;
 - `Stop` : le travail de l'orchestrateur (session principale) pendant le tour, découpé par itération.
 
@@ -61,11 +143,9 @@ Règles communes aux documents : les identifiants (EF-xx, CU-xx, US-xxx, E-xxx�
 
 Pour comparer la qualité, le temps et le coût, génère le même projet dans plusieurs dossiers (ex. `pomodoro-v1`, `pomodoro-v2`), puis lance `/compare pomodoro-v1 pomodoro-v2` (ou `python3 hooks/metrics.py compare …`). Nécessite `python3`.
 
-Inspirations : [spec-kit](https://github.com/github/spec-kit) (marqueurs de clarification, gates d'architecture, tâches ordonnées tests d'abord avec `[P]`) et [BMAD](https://github.com/bmad-code-org/BMAD-METHOD) (stories autonomes, suivi de statut, contrôle « prêt à développer »).
+## 🧠 Conception
 
-## Conception
-
-**Principe.** Tout ce qui est attendu doit être écrit noir sur blanc : l'IA qui développera ne doit rien avoir à deviner ni à inventer.
+> **Principe.** Tout ce qui est attendu doit être écrit noir sur blanc : l'IA qui développera ne doit rien avoir à deviner ni à inventer.
 
 **Échanges.** L'utilisateur ne parle qu'à l'orchestrateur (la commande), jamais directement aux agents. L'orchestrateur invoque l'agent de cadrage, qui précise et challenge la demande, puis lui remonte ses points bloquants, ses zones de flou et ses propositions. L'orchestrateur les traduit pour l'utilisateur, avec des options, et l'utilisateur tranche. Un seul agent de cadrage porte à la fois la casquette de celui qui challenge et de celui qui propose ; un second agent « copilote » reste en réserve si, à l'usage, il mélange trop les deux.
 
@@ -92,31 +172,31 @@ Inspirations : [spec-kit](https://github.com/github/spec-kit) (marqueurs de clar
 - Le statut de chaque US vit uniquement dans le tableau du backlog.
 - À l'étape BACKLOG, l'évaluateur fait le contrôle « prêt à développer ». Sont bloquants : un EF V1 sans US, une US sans besoin, une dépendance cassée.
 
-## Structure du plugin
+## 🗂 Structure du plugin
 
 ```
 .claude-plugin/
   plugin.json          # Manifeste du plugin
   marketplace.json     # Marketplace locale pour tester le plugin
-skills/kickoff/            # Orchestrateur : une itération de la boucle de cadrage
-skills/eval/       # Passe d'évaluation (lancée aussi en fin d'itération)
-skills/validate/   # Validation de l'étape courante
-skills/sync/       # Synchronisation des documents vers Confluence (+ resoudre.py)
-skills/doctor/     # Diagnostic et installation des dépendances (mermaid-cli, Code Review Graph, linters…)
-skills/reverse/    # Rétro-documentation d'un projet existant (+ graph_digest.py, check_refs.py)
-skills/openapi/    # Spécifications OpenAPI / AsyncAPI / JSON Schema des contrats
+skills/kickoff/        # Orchestrateur : une itération de la boucle de cadrage
+skills/eval/           # Passe d'évaluation (lancée aussi en fin d'itération)
+skills/validate/       # Validation de l'étape courante
+skills/sync/           # Synchronisation des documents vers Confluence (+ resoudre.py)
+skills/doctor/         # Diagnostic et installation des dépendances (mermaid-cli, Code Review Graph, linters…)
+skills/reverse/        # Rétro-documentation d'un projet existant (+ graph_digest.py, check_refs.py)
+skills/openapi/        # Spécifications OpenAPI / AsyncAPI / JSON Schema des contrats
+skills/compare/        # Comparaison de runs (qualité, temps, coût)
 agents/cadrage.md      # Agent de cadrage : product owner sceptique (analyse, rédaction, proposition)
 agents/evaluateur.md   # Auditeur : liste les points d'ombre dans docs/eval/
 agents/recherche.md    # Agent de recherche : explore, cartographie un projet existant et rédige sa documentation
 agents/mise-en-page.md # Agent de mise en page : transforme les documents en pages Confluence selon l'arborescence cible (lancé par /sync)
 agents/publication.md  # Agent de publication : publie un lot de pages Confluence (lancé en parallèle par /sync)
 templates/             # Gabarits : prd, architecture, adr, adr-index, glossaire, backlog, story, eval, confluence-arborescence, cartographie
-skills/compare/   # Comparaison de runs (qualité, temps, coût)
 hooks/hooks.json       # Hooks SubagentStop et Stop → hooks/metrics.py
 hooks/metrics.py       # Métriques : enregistrement (hooks), rendu de metrics.md, comparaison de runs
 ```
 
-## Tester en local
+## 🧪 Tester en local
 
 Lancer Claude Code avec le plugin chargé directement :
 
@@ -130,3 +210,19 @@ Ou l'installer via la marketplace locale :
 /plugin marketplace add ./
 /plugin install sohub-plugins-kickoff@sohub-plugins-kickoff-dev
 ```
+
+## 🙏 Inspirations
+
+- [spec-kit](https://github.com/github/spec-kit) — marqueurs de clarification, gates d'architecture, tâches ordonnées tests d'abord avec `[P]`.
+- [BMAD](https://github.com/bmad-code-org/BMAD-METHOD) — stories autonomes, suivi de statut, contrôle « prêt à développer ».
+- [Code Review Graph](https://github.com/tirth8205/code-review-graph) — graphe du code pour la rétro-documentation.
+
+## 📄 Licence
+
+Distribué sous licence [MIT](LICENSE) — © 2026 Sabri Ouaked.
+
+---
+
+<div align="center">
+Fait par <a href="https://github.com/ouakeds">Sabri</a> avec Claude Code.
+</div>
